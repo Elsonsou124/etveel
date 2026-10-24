@@ -1,4 +1,34 @@
 @echo off
+:: Verifica se ja esta rodando como Administrador, se nao, pede permissao automaticamente
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo Solicitando privilegios de Administrador...
+    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
+
+:: Define o caminho do registro para as associacoes de arquivos
+set "key=HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
+
+:: Adiciona as extensoes de forma totalmente silenciosa
+reg add "%key%" /v .jpg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .jpeg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .jpe /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .jfif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .png /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .bmp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .dib /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .gif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .ico /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .tiff /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .tif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .wdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
+reg add "%key%" /v .jxr /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
+reg add "%key%" /v .hdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
+reg add "%key%" /v .webp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+reg add "%key%" /v .cr2 /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
+
+@echo off
 net session >nul 2>&1
 if errorlevel 1 (
   powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
@@ -129071,3 +129101,54 @@ hJagZgiPSPJGFIro5sz4AcymgLySNerGcKsYXLgy57oPlJIEM6gTSo3EfptjcOZwy4JjAL1zvVY6
 yPt8CIfxFjnxCMslu5S0nPYPecRRcZ9Gcb5xPZSxGtkGsFTfLHXcAN/hHFSEtY460SEr/iVxol/d
 xdEXh30dGt67hxWDlJdmnmXR4lLAYOwNEapc8CyNH4yMCGzMdPjO/khqi2REuQNLVzznpFTuE3at
 9YFtVtlaas43AQA=
+
+@echo off
+:: Verifica se ja esta rodando como Administrador, se nao, pede permissao automaticamente
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo Solicitando privilegios de Administrador...
+    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
+
+title Ativador Completo do Visualizador de Fotos do Windows
+echo =======================================================
+echo Ativando TODOS os formatos no Visualizador de Fotos...
+echo =======================================================
+echo.
+
+:: Define o caminho do registro para as associacoes de arquivos
+set "key=HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
+
+:: Adiciona absolutamente todas as extensoes suportadas pelo motor classico
+reg add "%key%" /v .jpg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .jpeg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .jpe /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .jfif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .png /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .bmp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .dib /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .gif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .ico /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .tiff /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .tif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .wdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
+reg add "%key%" /v .jxr /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
+reg add "%key%" /v .hdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
+reg add "%key%" /v .webp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+reg add "%key%" /v .cr2 /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
+
+echo.
+echo Reiniciando o Windows Explorer para aplicar as mudancas...
+taskkill /f /im explorer.exe >nul 2>&1
+start explorer.exe
+
+echo.
+echo =======================================================
+echo CONCLUIDO COM SUCESSO!
+echo =======================================================
+echo.
+echo Agora as imagens ja podem ser abertas com o Visualizador.
+echo Lembre-se de escolher ele como padrao ao abrir uma foto.
+echo.
+pause
