@@ -1,41 +1,46 @@
 @echo off
-:: Verifica se ja esta rodando como Administrador, se nao, pede permissao automaticamente
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Solicitando privilegios de Administrador...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
+setlocal EnableExtensions
 
-:: Define o caminho do registro para as associacoes de arquivos
-set "key=HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
+:: ============================================================
+::  TUDO OCULTO: reabre este arquivo sem mostrar a janela preta
+::  e ja com privilegios de administrador.
+:: ============================================================
+if /i "%~1"=="__oculto" goto :principal
+powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '__oculto' -Verb RunAs -WindowStyle Hidden" >nul 2>&1
+exit /b
 
-:: Adiciona as extensoes de forma totalmente silenciosa
-reg add "%key%" /v .jpg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .jpeg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .jpe /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .jfif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .png /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .bmp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .dib /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .gif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .ico /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .tiff /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .tif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .wdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
-reg add "%key%" /v .jxr /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
-reg add "%key%" /v .hdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f >nul 2>&1
-reg add "%key%" /v .webp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-reg add "%key%" /v .cr2 /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f >nul 2>&1
-
-@echo off
+:principal
 net session >nul 2>&1
 if errorlevel 1 (
-  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >nul 2>&1
   exit /b
 )
+
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
+
+:: -----------------------------------------------------------
+::  REGISTRO SILENCIOSO - nada aparece na tela
+:: -----------------------------------------------------------
+:: Icones da area de trabalho
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" /t REG_DWORD /d 0 /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" /t REG_DWORD /d 0 /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" /t REG_DWORD /d 0 /f >nul 2>&1
+
+:: Visualizador de Fotos do Windows como aplicativo padrao das imagens
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".bmp" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".dib" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".gif" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jfif" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpe" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpeg" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpg" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jxr" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".png" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".wdp" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
+
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Add-Type -MemberDefinition '[DllImport(\"shell32.dll\")]public static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);' -Name 'Win32' -Namespace 'API'; [API.Win32]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)" >nul 2>&1
+
 powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
 exit /b
 #PSSTART
@@ -111,7 +116,7 @@ function Preparar-Office {
         $m = '###' + 'PAYLOAD###'
         $i = $txt.LastIndexOf($m)
         if ($i -lt 0) { throw "Instalador do Office nao encontrado dentro do arquivo." }
-        $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace '[^A-Za-z0-9+/=]',''))
+        $raw = $txt.Substring($i + $m.Length); $f = $raw.IndexOf('#'+'PSEND'); if ($f -ge 0) { $raw = $raw.Substring(0, $f) }; $bytes = [Convert]::FromBase64String(($raw -replace '[^A-Za-z0-9+/=]',''))
         try { [IO.File]::WriteAllBytes($exe, $bytes) }
         catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format 'HHmmss') + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
         Log "Instalador pronto: $exe"
@@ -164,31 +169,51 @@ $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
-    "Ativacão do Windows" = { Powershell -Command "irm https://get.activated.win | iex" }
+    "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) /HWID; exit 0" }
     "Instalar Google Chrome"        = { Start-Task "Chrome" (W "Google.Chrome") }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }
-    "Abrir instalador do Office"    = { $exe = Preparar-Office; if ($exe) { Start-Process -FilePath $exe; Log "Instalador do Office aberto." } }
-    "INSTALAR TUDO (Sem MSI)"       = {
-        Start-Task "TUDO Sem MSI" ((@(
-            "Write-Host '[1/4] Chrome'", (W "Google.Chrome"),
-            "Write-Host '[2/4] Acrobat'", (W "Adobe.Acrobat.Reader.64-bit"),
-            "Write-Host '[3/4] WinRAR'", (W "RARLab.WinRAR"), $rarKey,
-            "Write-Host '[4/4] Office'", (OfficeCmd)
-        )) -join "; ") -total 4
+    
+    "Abrir instalador do Office"    = { 
+        $exe = Preparar-Office
+        if ($exe) { 
+            Start-Process -FilePath $exe -WindowStyle Normal
+            Log "Instalador do Office aberto." 
+        } 
     }
+    
+    "INSTALAR TUDO (Sem Office)"    = {
+        $apps = @(
+            @{ N = 'Chrome';      Id = 'Google.Chrome' },
+            @{ N = 'Acrobat';     Id = 'Adobe.Acrobat.Reader.64-bit' },
+            @{ N = 'WinRAR';      Id = 'RARLab.WinRAR' },
+            @{ N = 'Afterburner'; Id = 'Guru3D.Afterburner' }
+        )
+        $linhas = @()
+        $n = 0
+        foreach ($a in $apps) {
+            $n++
+            $linhas += "Write-Output '[$n/4] " + $a.N + "'"
+            $linhas += (W $a.Id) + " --silent --disable-interactivity"
+            $linhas += "`$r = `$LASTEXITCODE"
+            if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
+            $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
+        }
+        $linhas += "exit 0"
+        Start-Task "TUDO Sem Office" ($linhas -join "; ") -total 4
+    }
+    
     "INSTALAR TUDO + Office"        = {
         Start-Task "TUDO com Office" ((@(
-            "Write-Host '[1/5] Chrome'", (W "Google.Chrome"),
-            "Write-Host '[2/5] Acrobat'", (W "Adobe.Acrobat.Reader.64-bit"),
-            "Write-Host '[3/5] WinRAR'", (W "RARLab.WinRAR"), $rarKey,
-            "Write-Host '[4/5] Afterburner'", (W "Guru3D.Afterburner"),
-            "Write-Host '[5/5] Office'", (OfficeCmd)
+            "Write-Output '[1/5] Chrome'", (W "Google.Chrome"),
+            "Write-Output '[2/5] Acrobat'", (W "Adobe.Acrobat.Reader.64-bit"),
+            "Write-Output '[3/5] WinRAR'", (W "RARLab.WinRAR"), $rarKey,
+            "Write-Output '[4/5] Afterburner'", (W "Guru3D.Afterburner"),
+            "Write-Output '[5/5] Office'", (OfficeCmd)
         )) -join "; ") -total 5
     }
 }
-
 $y = 65
 foreach ($name in $actions.Keys) {
     $btn = New-Object System.Windows.Forms.Button
@@ -199,7 +224,7 @@ foreach ($name in $actions.Keys) {
     $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
 
-    if ($name -like "INSTALAR TUDO (Sem MSI)*") { 
+    if ($name -like "INSTALAR TUDO (Sem Office)*") { 
         $btn.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 200)
         $btn.ForeColor = [System.Drawing.Color]::White
         $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 230, 255)
@@ -303,7 +328,17 @@ $timer.Add_Tick({
 
         if ($t.Proc.HasExited) {
             $c = $t.Proc.ExitCode
-            if ($c -eq 0) { Log ("Aplicativo instalado - " + $t.Nome) }
+            $res = @()
+            if (Test-Path $t.Out) { $res = @(Get-Content $t.Out -ErrorAction SilentlyContinue | Where-Object { $_ -match '^RESULT\|' }) }
+            if ($res.Count -gt 0) {
+                foreach ($l in $res) {
+                    $p = $l -split '\|'; $an = $p[1]; $ac = [int64]$p[2]
+                    if ($ac -eq 0) { Log ("Aplicativo instalado - " + $an) }
+                    elseif ($ac -eq -1978335189 -or $ac -eq -1978335135) { Log ("Aplicativo ja estava instalado - " + $an) }
+                    else { Log ("ERRO ao instalar " + $an + " (codigo $ac)") }
+                }
+            }
+            elseif ($c -eq 0) { Log ("Aplicativo instalado - " + $t.Nome) }
             elseif ($c -eq -1978335189) { Log ("Aplicativo ja estava instalado - " + $t.Nome) }
             else {
                 Log ("ERRO ao instalar " + $t.Nome + " (codigo $c)")
@@ -327,6 +362,7 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
+Log "Visualizador de Fotos do Windows definido como padrao (oculto)."
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
 
@@ -129102,53 +129138,4 @@ yPt8CIfxFjnxCMslu5S0nPYPecRRcZ9Gcb5xPZSxGtkGsFTfLHXcAN/hHFSEtY460SEr/iVxol/d
 xdEXh30dGt67hxWDlJdmnmXR4lLAYOwNEapc8CyNH4yMCGzMdPjO/khqi2REuQNLVzznpFTuE3at
 9YFtVtlaas43AQA=
 
-@echo off
-:: Verifica se ja esta rodando como Administrador, se nao, pede permissao automaticamente
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Solicitando privilegios de Administrador...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
-
-title Ativador Completo do Visualizador de Fotos do Windows
-echo =======================================================
-echo Ativando TODOS os formatos no Visualizador de Fotos...
-echo =======================================================
-echo.
-
-:: Define o caminho do registro para as associacoes de arquivos
-set "key=HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
-
-:: Adiciona absolutamente todas as extensoes suportadas pelo motor classico
-reg add "%key%" /v .jpg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .jpeg /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .jpe /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .jfif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .png /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .bmp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .dib /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .gif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .ico /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .tiff /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .tif /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .wdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
-reg add "%key%" /v .jxr /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
-reg add "%key%" /v .hdp /t REG_SZ /d PhotoViewer.FileAssoc.Wdp /f
-reg add "%key%" /v .webp /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-reg add "%key%" /v .cr2 /t REG_SZ /d PhotoViewer.FileAssoc.Tiff /f
-
-echo.
-echo Reiniciando o Windows Explorer para aplicar as mudancas...
-taskkill /f /im explorer.exe >nul 2>&1
-start explorer.exe
-
-echo.
-echo =======================================================
-echo CONCLUIDO COM SUCESSO!
-echo =======================================================
-echo.
-echo Agora as imagens ja podem ser abertas com o Visualizador.
-echo Lembre-se de escolher ele como padrao ao abrir uma foto.
-echo.
-pause
+#PSEND
