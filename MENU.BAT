@@ -169,7 +169,7 @@ $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
-    "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
+    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash --proxy \"\"") }
     "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash") }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
