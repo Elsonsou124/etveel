@@ -170,7 +170,7 @@ $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
     "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
-    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --ignore-security-hash") }
+    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash") }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }
@@ -419,7 +419,7 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
-Log "Visualizador de Fotos do Windows definido como padrao (oculto)."
+Log "Visualizador de Fotos do Windows Habilitado."
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
 
