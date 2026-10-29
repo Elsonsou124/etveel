@@ -170,7 +170,7 @@ $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
     "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
-    "Instalar Google Chrome"        = { Start-Task "Chrome" (W "Google.Chrome") }
+    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --ignore-security-hash") }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }
@@ -185,33 +185,90 @@ $actions = [ordered]@{
     
     "INSTALAR TUDO (Sem Office)"    = {
         $apps = @(
-            @{ N = 'Chrome';      Id = 'Google.Chrome' },
-            @{ N = 'Acrobat';     Id = 'Adobe.Acrobat.Reader.64-bit' },
-            @{ N = 'WinRAR';      Id = 'RARLab.WinRAR' },
-            @{ N = 'Afterburner'; Id = 'Guru3D.Afterburner' }
+            @{ N = 'Google Chrome';         Id = 'Google.Chrome' },
+            @{ N = 'Adobe Acrobat Reader';  Id = 'Adobe.Acrobat.Reader.64-bit' },
+            @{ N = 'WinRAR';                Id = 'RARLab.WinRAR' },
+            @{ N = 'MSI Afterburner';       Id = 'Guru3D.Afterburner' }
         )
+        $total = $apps.Count
         $linhas = @()
         $n = 0
+        
         foreach ($a in $apps) {
             $n++
-            $linhas += "Write-Output '[$n/4] " + $a.N + "'"
-            $linhas += (W $a.Id) + " --silent --disable-interactivity"
+            $faltam = $total - $n
+            
+            # 1. Imprime no Log detalhes de qual app está instalando e quantos faltam
+            $linhas += "Write-Output '-------------------------------------------------'"
+            $linhas += "Write-Output '-> [$n de $total] INSTALANDO AGORA: " + $a.N + "'"
+            $linhas += "Write-Output '-> Faltam $faltam aplicativo(s) na fila...'"
+            $linhas += "Write-Output '-------------------------------------------------'"
+            
+            # 2. Executa a instalação silenciosa ignorando erros de hash do Winget
+            $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
             $linhas += "`$r = `$LASTEXITCODE"
+            
+            # 3. Aplica a chave do WinRAR caso seja ele
             if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
+            
+            # 4. Confirma o resultado interno
             $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
+            $linhas += "Write-Output ''" # Pula uma linha no log para ficar organizado
         }
+        
+        $linhas += "Write-Output '================================================='"
+        $linhas += "Write-Output '      TODAS AS INSTALACOES FORAM CONCLUIDAS!     '"
+        $linhas += "Write-Output '================================================='"
         $linhas += "exit 0"
-        Start-Task "TUDO Sem Office" ($linhas -join "; ") -total 4
+        
+        Start-Task "Lote de Apps (Sem Office)" ($linhas -join "; ") -total $total
     }
     
     "INSTALAR TUDO + Office"        = {
-        Start-Task "TUDO com Office" ((@(
-            "Write-Output '[1/5] Chrome'", (W "Google.Chrome"),
-            "Write-Output '[2/5] Acrobat'", (W "Adobe.Acrobat.Reader.64-bit"),
-            "Write-Output '[3/5] WinRAR'", (W "RARLab.WinRAR"), $rarKey,
-            "Write-Output '[4/5] Afterburner'", (W "Guru3D.Afterburner"),
-            "Write-Output '[5/5] Office'", (OfficeCmd)
-        )) -join "; ") -total 5
+        $apps = @(
+            @{ N = 'Google Chrome';         Id = 'Google.Chrome';                 Tipo = 'Winget' },
+            @{ N = 'Adobe Acrobat Reader';  Id = 'Adobe.Acrobat.Reader.64-bit';   Tipo = 'Winget' },
+            @{ N = 'WinRAR';                Id = 'RARLab.WinRAR';                 Tipo = 'Winget' },
+            @{ N = 'MSI Afterburner';       Id = 'Guru3D.Afterburner';            Tipo = 'Winget' },
+            @{ N = 'Microsoft Office';      Id = '';                              Tipo = 'Office' }
+        )
+        $total = $apps.Count
+        $linhas = @()
+        $n = 0
+        
+        foreach ($a in $apps) {
+            $n++
+            $faltam = $total - $n
+            
+            # 1. Imprime no Log detalhes de qual app está instalando e quantos faltam
+            $linhas += "Write-Output '-------------------------------------------------'"
+            $linhas += "Write-Output '-> [$n de $total] INSTALANDO AGORA: " + $a.N + "'"
+            $linhas += "Write-Output '-> Faltam $faltam aplicativo(s) na fila...'"
+            $linhas += "Write-Output '-------------------------------------------------'"
+            
+            # 2. Verifica se é um app do Winget ou o Office
+            if ($a.Tipo -eq 'Winget') {
+                $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
+            } else {
+                $linhas += (OfficeCmd)
+            }
+            
+            $linhas += "`$r = `$LASTEXITCODE"
+            
+            # 3. Aplica a chave do WinRAR caso seja ele
+            if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
+            
+            # 4. Confirma o resultado interno
+            $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
+            $linhas += "Write-Output ''" # Pula uma linha no log para ficar organizado
+        }
+        
+        $linhas += "Write-Output '================================================='"
+        $linhas += "Write-Output '      TODAS AS INSTALACOES FORAM CONCLUIDAS!     '"
+        $linhas += "Write-Output '================================================='"
+        $linhas += "exit 0"
+        
+        Start-Task "Lote de Apps (Com Office)" ($linhas -join "; ") -total $total
     }
 }
 $y = 65
