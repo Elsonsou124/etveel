@@ -169,11 +169,10 @@ $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
-    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash --proxy \"\"") }
+    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash --proxy ''") }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
-    "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }
-    
+    "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }  
     "Abrir instalador do Office"    = { 
         $exe = Preparar-Office
         if ($exe) { 
