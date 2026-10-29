@@ -1,21 +1,17 @@
 @echo off
 setlocal EnableExtensions
+chcp 65001 >nul
 
-:: ============================================================
-::  TUDO OCULTO: reabre este arquivo sem mostrar a janela preta
-::  e ja com privilegios de administrador.
-:: ============================================================
-if /i "%~1"=="__oculto" goto :principal
-powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '__oculto' -Verb RunAs -WindowStyle Hidden" >nul 2>&1
-exit /b
-
-:principal
+:: Inicializacao e elevacao de privilegios - bloco da versao que abria corretamente.
+if /i "%~1"=="__debug_admin" goto :principal
 net session >nul 2>&1
 if errorlevel 1 (
-  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >nul 2>&1
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '__debug_admin' -Verb RunAs"
   exit /b
 )
+goto :principal
 
+:principal
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
 
@@ -41,7 +37,11 @@ reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociati
 
 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Add-Type -MemberDefinition '[DllImport(\"shell32.dll\")]public static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);' -Name 'Win32' -Namespace 'API'; [API.Win32]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)" >nul 2>&1
 
-powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
+echo Iniciando menu em modo visivel para diagnostico...
+powershell -NoProfile -ExecutionPolicy Bypass -STA -Command "$ErrorActionPreference='Stop'; try { $s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); if($a -lt 0 -or $b -le $a){ throw 'Marcadores PSSTART/PSEND nao encontrados no arquivo.' }; iex $s.Substring($a, $b-$a) } catch { $detail = ($_ | Format-List * -Force | Out-String); $detail += [Environment]::NewLine + 'STACK:' + [Environment]::NewLine + $_.ScriptStackTrace; $log = Join-Path $env:TEMP 'MENU_DIAGNOSTICO_ERRO.txt'; $detail | Out-File -FilePath $log -Encoding UTF8; Write-Host ''; Write-Host 'ERRO DETALHADO:' -ForegroundColor Red; Write-Host $detail -ForegroundColor Red; Write-Host ('Log salvo em: ' + $log); Read-Host 'Pressione ENTER para fechar' }"
+echo.
+echo O menu/PowerShell foi encerrado. Pressione uma tecla para fechar esta janela.
+pause >nul
 exit /b
 #PSSTART
 Add-Type -AssemblyName System.Windows.Forms
@@ -56,14 +56,7 @@ $WINRARDIR = "C:\Program Files\WinRAR"
 # ----------------------------------------------
 
 
-# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
-if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
-    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
-    $txtPath = "$WINRARDIR\rarreg.txt"
-    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
-    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
-}
-# --------------------------------------------
+# --- WinRAR: nao gerar chave ficticia; usar licenca valida se disponivel. ---
 
 $global:tasks = New-Object System.Collections.ArrayList
 $global:totalEtapas = 0
@@ -105,7 +98,27 @@ function Start-Task($titulo, $script, $total = 1) {
 }
 
 function W($id) { "winget install -e --id $id --source winget --accept-package-agreements --accept-source-agreements" }
-$rarKey = "if (Test-Path '$KEY') { New-Item -ItemType Directory -Force -Path '$WINRARDIR' | Out-Null; Copy-Item '$KEY' '$WINRARDIR\rarreg.key' -Force; Write-Host 'Licenca do WinRAR copiada.' } else { Write-Host 'rarreg.key gerado pelo script.' }"
+#PSSTART
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$drive     = $env:BATDRIVE
+$BASE      = "$drive\Windows\Tudo"
+$KEY       = "$BASE\rarreg.key"
+$WINRARDIR = "C:\Program Files\WinRAR"
+
+# ----------------------------------------------
+
+
+# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
+if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
+    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
+    $txtPath = "$WINRARDIR\rarreg.txt"
+    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
+    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
+}
+# --------------------------------------------
 
 
 function Preparar-Office {
@@ -173,100 +186,56 @@ $titlePanel.Controls.Add($subTitle)
 
 
 $actions = [ordered]@{
-    "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
     "Instalar Google Chrome" = {
-        # Executa o script diretamente no processo criado por Start-Task.
-        # Evita PowerShell aninhado/EncodedCommand e grava diagnostico detalhado.
-        $chromeScript = @'
-$ErrorActionPreference = 'Stop'
-$installer = Join-Path $env:TEMP 'ChromeSetup.msi'
-$msiLog = Join-Path $env:TEMP 'ChromeInstall.log'
-$url = 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi'
+        # Script separado para evitar conflitos de aspas no Start-Task
+        $psScript = @'
+$ErrorActionPreference = "Stop"
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Remove-Item $installer -Force -ErrorAction SilentlyContinue
 
-    Write-Output 'Baixando instalador oficial do Google Chrome (limite de 120 segundos)...'
-    $downloaded = $false
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    $installer = Join-Path $env:TEMP "ChromeSetup.msi"
+    $url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
 
-    if ($curl) {
-        & $curl.Source --fail --location --silent --show-error --connect-timeout 15 --max-time 120 --output $installer $url 2>&1 | ForEach-Object { Write-Output $_ }
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer) -and (Get-Item $installer).Length -gt 1MB) {
-            $downloaded = $true
-        } else {
-            Write-Output "curl falhou (codigo $LASTEXITCODE). Tentando metodo .NET com timeout..."
-            Remove-Item $installer -Force -ErrorAction SilentlyContinue
-        }
-    } else {
-        Write-Output 'curl.exe nao esta disponivel; usando .NET com timeout...'
+    Write-Output "Baixando instalador oficial do Google Chrome..."
+    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+
+    if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1MB) {
+        throw "Download incompleto ou arquivo invalido."
     }
 
-    if (-not $downloaded) {
-        $request = [Net.HttpWebRequest]::Create($url)
-        $request.Method = 'GET'
-        $request.Timeout = 30000
-        $request.ReadWriteTimeout = 30000
-        $request.AllowAutoRedirect = $true
-        $request.UserAgent = 'Mozilla/5.0 Windows ChromeInstaller'
-        try {
-            $proxy = [Net.WebRequest]::GetSystemWebProxy()
-            if ($proxy) {
-                $proxy.Credentials = [Net.CredentialCache]::DefaultCredentials
-                $request.Proxy = $proxy
-            }
-        } catch { Write-Output "Aviso ao configurar proxy: $($_.Exception.Message)" }
-
-        $response = $request.GetResponse()
-        try {
-            $inputStream = $response.GetResponseStream()
-            $outputStream = [IO.File]::Create($installer)
-            try { $inputStream.CopyTo($outputStream) }
-            finally { $outputStream.Dispose(); $inputStream.Dispose() }
-        } finally { $response.Dispose() }
-
-        if ((Test-Path $installer) -and (Get-Item $installer).Length -gt 1MB) {
-            $downloaded = $true
-        }
-    }
-
-    if (-not $downloaded) {
-        throw 'O download nao foi concluido. Verifique internet, proxy ou firewall. Veja o log acima.'
-    }
-
-    Write-Output ('Download concluido: ' + [math]::Round((Get-Item $installer).Length / 1MB, 2) + ' MB')
-    Write-Output 'Verificando assinatura digital...'
     $signature = Get-AuthenticodeSignature -FilePath $installer
-    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Google') {
-        throw "Assinatura digital nao validada (status: $($signature.Status); signatario: $($signature.SignerCertificate.Subject))."
+    if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Google") {
+        throw "Assinatura digital invalida. Instalacao cancelada."
     }
 
-    Write-Output 'Instalando Chrome em modo silencioso...'
-    Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
-    $arguments = '/i "' + $installer + '" /qn /norestart /L*v "' + $msiLog + '"'
-    $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList $arguments -Wait -PassThru
+    Write-Output "Instalando Google Chrome..."
+    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
+        -ArgumentList "/i `"$installer`" /qn /norestart" `
+        -Wait -PassThru
 
     if ($process.ExitCode -notin @(0, 3010)) {
-        Write-Output "Falha do Windows Installer: codigo $($process.ExitCode). Log MSI: $msiLog"
-        if (Test-Path $msiLog) {
-            Get-Content $msiLog -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_ }
-        }
-        throw "O instalador MSI retornou codigo $($process.ExitCode)."
+        throw "O instalador retornou o codigo $($process.ExitCode)."
     }
 
-    Write-Output 'Google Chrome instalado com sucesso.'
+    Write-Output "Google Chrome instalado com sucesso."
     exit 0
 }
 catch {
-    Write-Output ('ERRO DETALHADO: ' + $_.Exception.Message)
-    Write-Output ('Arquivo de download: ' + $installer)
+    Write-Output "ERRO: $($_.Exception.Message)"
     exit 1
 }
 '@
-        Start-Task "Chrome" $chromeScript
-    }
 
+        $encoded = [Convert]::ToBase64String(
+            [Text.Encoding]::Unicode.GetBytes($psScript)
+        )
+
+        Start-Task "Chrome" (
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $encoded
+        )
+    }
+	"Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
     "Instalar Adobe Acrobat Reader" = {
         Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit")
     }
@@ -329,49 +298,45 @@ catch {
     }
     
     "INSTALAR TUDO + Office"        = {
+        # Primeiro instala todos os aplicativos comuns; o Office fica explicitamente por ultimo.
         $apps = @(
-            @{ N = 'Google Chrome';         Id = 'Google.Chrome';                 Tipo = 'Winget' },
-            @{ N = 'Adobe Acrobat Reader';  Id = 'Adobe.Acrobat.Reader.64-bit';   Tipo = 'Winget' },
-            @{ N = 'WinRAR';                Id = 'RARLab.WinRAR';                 Tipo = 'Winget' },
-            @{ N = 'MSI Afterburner';       Id = 'Guru3D.Afterburner';            Tipo = 'Winget' },
-            @{ N = 'Microsoft Office';      Id = '';                              Tipo = 'Office' }
+            @{ N = 'Google Chrome';        Id = 'Google.Chrome' },
+            @{ N = 'Adobe Acrobat Reader'; Id = 'Adobe.Acrobat.Reader.64-bit' },
+            @{ N = 'WinRAR';               Id = 'RARLab.WinRAR' },
+            @{ N = 'MSI Afterburner';      Id = 'Guru3D.Afterburner' }
         )
-        $total = $apps.Count
+        $total = $apps.Count + 1
         $linhas = @()
         $n = 0
-        
+
         foreach ($a in $apps) {
             $n++
             $faltam = $total - $n
-            
-            # 1. Imprime no Log detalhes de qual app está instalando e quantos faltam
             $linhas += "Write-Output '-------------------------------------------------'"
             $linhas += "Write-Output '-> [$n de $total] INSTALANDO AGORA: " + $a.N + "'"
-            $linhas += "Write-Output '-> Faltam $faltam aplicativo(s) na fila...'"
+            $linhas += "Write-Output '-> Faltam $faltam etapa(s)...'"
             $linhas += "Write-Output '-------------------------------------------------'"
-            
-            # 2. Verifica se é um app do Winget ou o Office
-            if ($a.Tipo -eq 'Winget') {
-                $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
-            } else {
-                $linhas += (OfficeCmd)
-            }
-            
+            $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
             $linhas += "`$r = `$LASTEXITCODE"
-            
-            # 3. Aplica a chave do WinRAR caso seja ele
             if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
-            
-            # 4. Confirma o resultado interno
             $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
-            $linhas += "Write-Output ''" # Pula uma linha no log para ficar organizado
+            $linhas += "Write-Output ''"
         }
-        
+
+        # Office sempre e somente depois dos quatro aplicativos acima.
+        $linhas += "Write-Output '-------------------------------------------------'"
+        $linhas += "Write-Output '-> [$total de $total] INSTALANDO AGORA: Microsoft Office (ULTIMA ETAPA)'"
+        $linhas += "Write-Output '-> Faltam 0 etapa(s)...'"
+        $linhas += "Write-Output '-------------------------------------------------'"
+        $linhas += (OfficeCmd)
+        $linhas += "`$r = if (`$?) { 0 } else { 1 }"
+        $linhas += "Write-Output ('RESULT|Microsoft Office|' + `$r)"
+        $linhas += "Write-Output ''"
         $linhas += "Write-Output '================================================='"
-        $linhas += "Write-Output '      TODAS AS INSTALACOES FORAM CONCLUIDAS!     '"
+        $linhas += "Write-Output '      TODAS AS ETAPAS FORAM PROCESSADAS!         '"
         $linhas += "Write-Output '================================================='"
         $linhas += "exit 0"
-        
+
         Start-Task "Lote de Apps (Com Office)" ($linhas -join "; ") -total $total
     }
 }
