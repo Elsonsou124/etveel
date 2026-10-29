@@ -168,17 +168,80 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
+
+
+
+
 $actions = [ordered]@{
-    "Instalar Google Chrome" = { Start-Task "Chrome" "powershell -ExecutionPolicy Bypass -Command [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `$w=New-Object System.Net.WebClient; `$w.Proxy=[System.Net.WebRequest]::GetSystemWebProxy(); `$w.Proxy.Credentials=[System.Net.CredentialCache]::DefaultCredentials; `$w.DownloadFile('http://google.com', '`$env:TEMP\chrome.exe'); Start-Process '`$env:TEMP\chrome.exe' -ArgumentList '/silent /install' -Wait; Remove-Item '`$env:TEMP\chrome.exe'" }
-    "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
-    "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
-    "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }  
-    "Abrir instalador do Office"    = { 
+    "Instalar Google Chrome" = {
+        # Script separado para evitar conflitos de aspas no Start-Task
+        $psScript = @'
+$ErrorActionPreference = "Stop"
+
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    $installer = Join-Path $env:TEMP "ChromeSetup.msi"
+    $url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+
+    Write-Output "Baixando instalador oficial do Google Chrome..."
+    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+
+    if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1MB) {
+        throw "Download incompleto ou arquivo invalido."
+    }
+
+    $signature = Get-AuthenticodeSignature -FilePath $installer
+    if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Google") {
+        throw "Assinatura digital invalida. Instalacao cancelada."
+    }
+
+    Write-Output "Instalando Google Chrome..."
+    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
+        -ArgumentList "/i `"$installer`" /qn /norestart" `
+        -Wait -PassThru
+
+    if ($process.ExitCode -notin @(0, 3010)) {
+        throw "O instalador retornou o codigo $($process.ExitCode)."
+    }
+
+    Write-Output "Google Chrome instalado com sucesso."
+    exit 0
+}
+catch {
+    Write-Output "ERRO: $($_.Exception.Message)"
+    exit 1
+}
+'@
+
+        $encoded = [Convert]::ToBase64String(
+            [Text.Encoding]::Unicode.GetBytes($psScript)
+        )
+
+        Start-Task "Chrome" (
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $encoded
+        )
+    }
+
+    "Instalar Adobe Acrobat Reader" = {
+        Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit")
+    }
+
+    "Instalar WinRAR" = {
+        Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey)
+    }
+
+    "Instalar MSI Afterburner" = {
+        Start-Task "Afterburner" (W "Guru3D.Afterburner")
+    }
+
+    "Abrir instalador do Office" = {
         $exe = Preparar-Office
-        if ($exe) { 
+
+        if ($exe) {
             Start-Process -FilePath $exe -WindowStyle Normal
-            Log "Instalador do Office aberto." 
-        } 
+            Log "Instalador do Office aberto."
+        }
     }
     "INSTALAR TUDO (Sem Office)"    = {
         $apps = @(
