@@ -169,7 +169,7 @@ $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
 $actions = [ordered]@{
-    "Instalar Google Chrome" = { Start-Task "Chrome" ((W "Google.Chrome") + " --silent --accept-source-agreements --accept-package-agreements --ignore-security-hash --proxy ''") }
+    "Instalar Google Chrome" = { Start-Task "Chrome" "powershell -ExecutionPolicy Bypass -Command [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `$w=New-Object System.Net.WebClient; `$w.Proxy=[System.Net.WebRequest]::GetSystemWebProxy(); `$w.Proxy.Credentials=[System.Net.CredentialCache]::DefaultCredentials; `$w.DownloadFile('http://google.com', '`$env:TEMP\chrome.exe'); Start-Process '`$env:TEMP\chrome.exe' -ArgumentList '/silent /install' -Wait; Remove-Item '`$env:TEMP\chrome.exe'" }
     "Instalar Adobe Acrobat Reader" = { Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit") }
     "Instalar WinRAR"               = { Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (W "Guru3D.Afterburner") }  
@@ -180,7 +180,6 @@ $actions = [ordered]@{
             Log "Instalador do Office aberto." 
         } 
     }
-    
     "INSTALAR TUDO (Sem Office)"    = {
         $apps = @(
             @{ N = 'Google Chrome';         Id = 'Google.Chrome' },
