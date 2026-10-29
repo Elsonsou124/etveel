@@ -173,54 +173,98 @@ $titlePanel.Controls.Add($subTitle)
 
 
 $actions = [ordered]@{
+    "Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
     "Instalar Google Chrome" = {
-        # Script separado para evitar conflitos de aspas no Start-Task
-        $psScript = @'
-$ErrorActionPreference = "Stop"
+        # Executa o script diretamente no processo criado por Start-Task.
+        # Evita PowerShell aninhado/EncodedCommand e grava diagnostico detalhado.
+        $chromeScript = @'
+$ErrorActionPreference = 'Stop'
+$installer = Join-Path $env:TEMP 'ChromeSetup.msi'
+$msiLog = Join-Path $env:TEMP 'ChromeInstall.log'
+$url = 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi'
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Remove-Item $installer -Force -ErrorAction SilentlyContinue
 
-    $installer = Join-Path $env:TEMP "ChromeSetup.msi"
-    $url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+    Write-Output 'Baixando instalador oficial do Google Chrome (limite de 120 segundos)...'
+    $downloaded = $false
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
 
-    Write-Output "Baixando instalador oficial do Google Chrome..."
-    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-
-    if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1MB) {
-        throw "Download incompleto ou arquivo invalido."
+    if ($curl) {
+        & $curl.Source --fail --location --silent --show-error --connect-timeout 15 --max-time 120 --output $installer $url 2>&1 | ForEach-Object { Write-Output $_ }
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer) -and (Get-Item $installer).Length -gt 1MB) {
+            $downloaded = $true
+        } else {
+            Write-Output "curl falhou (codigo $LASTEXITCODE). Tentando metodo .NET com timeout..."
+            Remove-Item $installer -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Output 'curl.exe nao esta disponivel; usando .NET com timeout...'
     }
 
+    if (-not $downloaded) {
+        $request = [Net.HttpWebRequest]::Create($url)
+        $request.Method = 'GET'
+        $request.Timeout = 30000
+        $request.ReadWriteTimeout = 30000
+        $request.AllowAutoRedirect = $true
+        $request.UserAgent = 'Mozilla/5.0 Windows ChromeInstaller'
+        try {
+            $proxy = [Net.WebRequest]::GetSystemWebProxy()
+            if ($proxy) {
+                $proxy.Credentials = [Net.CredentialCache]::DefaultCredentials
+                $request.Proxy = $proxy
+            }
+        } catch { Write-Output "Aviso ao configurar proxy: $($_.Exception.Message)" }
+
+        $response = $request.GetResponse()
+        try {
+            $inputStream = $response.GetResponseStream()
+            $outputStream = [IO.File]::Create($installer)
+            try { $inputStream.CopyTo($outputStream) }
+            finally { $outputStream.Dispose(); $inputStream.Dispose() }
+        } finally { $response.Dispose() }
+
+        if ((Test-Path $installer) -and (Get-Item $installer).Length -gt 1MB) {
+            $downloaded = $true
+        }
+    }
+
+    if (-not $downloaded) {
+        throw 'O download nao foi concluido. Verifique internet, proxy ou firewall. Veja o log acima.'
+    }
+
+    Write-Output ('Download concluido: ' + [math]::Round((Get-Item $installer).Length / 1MB, 2) + ' MB')
+    Write-Output 'Verificando assinatura digital...'
     $signature = Get-AuthenticodeSignature -FilePath $installer
-    if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Google") {
-        throw "Assinatura digital invalida. Instalacao cancelada."
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Google') {
+        throw "Assinatura digital nao validada (status: $($signature.Status); signatario: $($signature.SignerCertificate.Subject))."
     }
 
-    Write-Output "Instalando Google Chrome..."
-    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
-        -ArgumentList "/i `"$installer`" /qn /norestart" `
-        -Wait -PassThru
+    Write-Output 'Instalando Chrome em modo silencioso...'
+    Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
+    $arguments = '/i "' + $installer + '" /qn /norestart /L*v "' + $msiLog + '"'
+    $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -notin @(0, 3010)) {
-        throw "O instalador retornou o codigo $($process.ExitCode)."
+        Write-Output "Falha do Windows Installer: codigo $($process.ExitCode). Log MSI: $msiLog"
+        if (Test-Path $msiLog) {
+            Get-Content $msiLog -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_ }
+        }
+        throw "O instalador MSI retornou codigo $($process.ExitCode)."
     }
 
-    Write-Output "Google Chrome instalado com sucesso."
+    Write-Output 'Google Chrome instalado com sucesso.'
     exit 0
 }
 catch {
-    Write-Output "ERRO: $($_.Exception.Message)"
+    Write-Output ('ERRO DETALHADO: ' + $_.Exception.Message)
+    Write-Output ('Arquivo de download: ' + $installer)
     exit 1
 }
 '@
-
-        $encoded = [Convert]::ToBase64String(
-            [Text.Encoding]::Unicode.GetBytes($psScript)
-        )
-
-        Start-Task "Chrome" (
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $encoded
-        )
+        Start-Task "Chrome" $chromeScript
     }
 
     "Instalar Adobe Acrobat Reader" = {
