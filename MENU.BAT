@@ -39,6 +39,14 @@ foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
     New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
 }
 
+# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
+if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
+    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
+    $txtPath = "$WINRARDIR\rarreg.txt"
+    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
+    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
+}
+
 # --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
 $refreshCode = @'
 [System.Runtime.InteropServices.DllImport("Shell32.dll")]
