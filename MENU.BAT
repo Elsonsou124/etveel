@@ -8,18 +8,59 @@ set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
 powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
 exit /b
+
 #PSSTART
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# =====================================================================
+# CONFIGURACOES INICIAIS E VARIAVEIS
+# =====================================================================
 $drive     = $env:BATDRIVE
 $BASE      = "$drive\Windows\Tudo"
-$KEY       = "$BASE\rarreg.key"
 $WINRARDIR = "C:\Program Files\WinRAR"
 
-# ----------------------------------------------
+# =====================================================================
+# TWEAKS DO SISTEMA (Executados invisivelmente ao abrir o BAT)
+# =====================================================================
 
+# --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
+$iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
+if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
+Set-ItemProperty -Path $iconsPath -Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" -Value 0 -Type DWord -Force 
+Set-ItemProperty -Path $iconsPath -Name "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" -Value 0 -Type DWord -Force 
+Set-ItemProperty -Path $iconsPath -Name "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" -Value 0 -Type DWord -Force 
+
+# --- ATIVAR VISUALIZADOR DE FOTOS CLASSICO (SILENCIOSO) ---
+$photoPath = "HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
+if (-not (Test-Path $photoPath)) { New-Item -Path $photoPath -Force | Out-Null }
+foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
+    New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
+}
+
+# --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
+$refreshCode = @'
+[System.Runtime.InteropServices.DllImport("Shell32.dll")]
+public static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
+public static void Atualizar() { SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero); }
+'@
+Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -ErrorAction SilentlyContinue
+[WinAPI.Desktop]::Atualizar()
+
+# =====================================================================
+# VARIAVEIS DE EXECUCAO SILENCIOSA (Para os lotes de instalacao)
+# =====================================================================
+
+# --- GERADOR DE LICENCA WINRAR ---
+$rarKey = '$WINRARDIR = "C:\Program Files\WinRAR"; if (-not (Test-Path "$WINRARDIR\rarreg.key")) { if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }; Set-Content -Path "$WINRARDIR\rarreg.key" -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force; Write-Host "##INFO Licenca do WinRAR gerada automaticamente" }'
+
+# --- COPIADOR DE ATALHOS DO OFFICE ---
+$officeShortcuts = '$achou = $false; $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"; $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"); foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) { foreach ($dir in $pastas) { if (Test-Path $dir) { $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }; foreach ($arq in $arquivos) { if (-not $achou) { if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }; $achou = $true }; Copy-Item -Path $arq.FullName -Destination $desk -Force } } } }; if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" } else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }'
+
+# =====================================================================
+# FUNCOES DO SISTEMA DE TAREFAS E LOGS
+# =====================================================================
 
 $global:tasks = New-Object System.Collections.ArrayList
 $global:totalEtapas = 0
@@ -62,63 +103,22 @@ function Start-Task($titulo, $script, $total = 1) {
 }
 
 function W($id) { "winget install -e --id $id --source winget --accept-package-agreements --accept-source-agreements" }
-$rarKey = "if (Test-Path '$KEY') { New-Item -ItemType Directory -Force -Path '$WINRARDIR' | Out-Null; Copy-Item '$KEY' '$WINRARDIR\rarreg.key' -Force; Write-Host 'Licenca do WinRAR copiada.' } else { Write-Host 'rarreg.key gerado pelo script.' }"
 
-# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
-if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
-    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
-    $txtPath = "$WINRARDIR\rarreg.txt"
-    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
-    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
-}
-# --------------------------------------------
-
-# --- ATIVAR VISUALIZADOR DE FOTOS CLASSICO (SILENCIOSO) ---
-$photoPath = "HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
-if (-not (Test-Path $photoPath)) { New-Item -Path $photoPath -Force | Out-Null }
-foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
-    New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
-}
-
-# --------------------------------------------	
-
-# --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
-$iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
-if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
-
-# 0 = Mostrar | 1 = Ocultar
-Set-ItemProperty -Path $iconsPath -Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" -Value 0 -Type DWord -Force # Meu Computador
-Set-ItemProperty -Path $iconsPath -Name "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" -Value 0 -Type DWord -Force # Arquivos do Usuario
-Set-ItemProperty -Path $iconsPath -Name "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" -Value 0 -Type DWord -Force # Painel de Controle
-
-# --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
-$refreshCode = @'
-[System.Runtime.InteropServices.DllImport("Shell32.dll")]
-public static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
-public static void Atualizar() {
-    SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero);
-}
-'@
-Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -ErrorAction SilentlyContinue
-[WinAPI.Desktop]::Atualizar()
-
-# Gera um passo com marcacoes que o LOG entende: ##AGORA / ##OK / ##JA / ##ERRO
 function Passo($n, $tot, $nome, $cmd) {
     "Write-Host '##AGORA [$n/$tot] $nome'; `$global:LASTEXITCODE = 0; $cmd; `$c = `$global:LASTEXITCODE; " +
     "if (`$c -eq 0) { Write-Host '##OK $nome' } elseif (`$c -eq -1978335189) { Write-Host '##JA $nome' } " +
     "else { Write-Host ('##ERRO $nome (codigo ' + `$c + ')'); `$global:falhou = 1 }"
 }
+
 function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$global:LASTEXITCODE = [int]`$global:falhou" }
 
-function Criar-PastaOffice {
-    $pasta = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Office 365'
-    if (Test-Path $pasta) { Log "Pasta 'Office 365' ja existe na Area de Trabalho." }
-    else { New-Item -ItemType Directory -Force -Path $pasta | Out-Null; Log "Pasta 'Office 365' criada na Area de Trabalho." }
-}
+# =====================================================================
+# FUNCOES DO OFFICE (Simples e Direta - Apenas Extrai e Abre)
+# =====================================================================
 
-# Extrai o instalador do Office para a pasta temporaria (NAO copia para a pasta Office 365)
 function Preparar-Office {
     try {
+        Log "Preparando o instalador do Office..."
         $exe = Join-Path $env:TEMP 'OfficeSetup.exe'
         $txt = [IO.File]::ReadAllText($env:INSTALLER_FILE)
         $m = '###' + 'PAYLOAD###'
@@ -127,17 +127,18 @@ function Preparar-Office {
         $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace '[^A-Za-z0-9+/=]',''))
         try { [IO.File]::WriteAllBytes($exe, $bytes) }
         catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format 'HHmmss') + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
+        Log "Instalador pronto: $exe"
         return $exe
     } catch {
         Log "ERRO ao preparar o Office: $_"
+        [System.Windows.Forms.MessageBox]::Show("Erro ao preparar o Office:`r`n$_") | Out-Null
         return $null
     }
 }
-function OfficeCmd {
-    $exe = Preparar-Office
-    if ($exe) { "`$p = Start-Process -FilePath '$exe' -Wait -PassThru; `$global:LASTEXITCODE = `$p.ExitCode" }
-    else { "`$global:LASTEXITCODE = 1" }
-}
+
+# =====================================================================
+# INTERFACE GRAFICA (Forms, Cores e Design)
+# =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
 
@@ -175,12 +176,27 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
+# =====================================================================
+# LISTA DE ACOES DOS BOTOES
+# =====================================================================
+
 $actions = [ordered]@{
-    "Ativacão do Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) " ; Log "Tela de Ativiação do Windows foi Aberta" }
+    "Ativacao do Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
     "Instalar Google Chrome"        = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
     "Instalar WinRAR"               = { Start-Task "WinRAR" (Lote @((Passo 1 1 "WinRAR" (W "RARLab.WinRAR")), $rarKey)) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
-    "Abrir instalador do Office"    = { $exe = Preparar-Office; if ($exe) { Start-Process -FilePath $exe; Log "Instalador do Office aberto." } Criar-PastaOffice }
+    
+    # Botao dedicado para abrir o instalador do Office diretamente na tela
+    "Abrir instalador do Office"    = {
+        $exe = Preparar-Office
+        if ($exe) {
+            Start-Process -FilePath $exe
+            Log "Instalador do Office aberto na tela com sucesso."
+        }
+    }
+    
+    "Copiar Atalhos do Office"      = { Start-Task "Copiando Atalhos" (Lote @($officeShortcuts)) }
+    
     "TUDO (Sem MSI e sem Office)"   = {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
@@ -188,26 +204,28 @@ $actions = [ordered]@{
             (Passo 3 3 "WinRAR" (W "RARLab.WinRAR")), $rarKey
         )) -total 3
     }
+    
     "INSTALAR TUDO (Sem MSI)"       = {
-        Criar-PastaOffice
         Start-Task "TUDO Sem MSI" (Lote @(
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
             (Passo 2 4 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
-            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
-            (Passo 4 4 "Office" (OfficeCmd))
+            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey
         )) -total 4
     }
+    
     "INSTALAR TUDO + Office"        = {
-        Criar-PastaOffice
         Start-Task "TUDO com Office" (Lote @(
             (Passo 1 5 "Chrome" (W "Google.Chrome")),
             (Passo 2 5 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
             (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
-            (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner")),
-            (Passo 5 5 "Office" (OfficeCmd))
+            (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner"))
         )) -total 5
     }
 }
+
+# =====================================================================
+# RENDERIZACAO DOS BOTOES
+# =====================================================================
 
 $y = 65
 foreach ($name in $actions.Keys) {
@@ -302,6 +320,10 @@ $watermark.AutoSize = $true
 $watermark.Location = New-Object System.Drawing.Point(575, 638)
 $form.Controls.Add($watermark)
 
+# =====================================================================
+# TIMER: PROCESSAMENTO DO LOG E FILA
+# =====================================================================
+
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
 function Ler-Novas($t) {
@@ -353,6 +375,7 @@ $timer.Start()
 
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
+
 
 $timer.Stop()
 $timer.Dispose()
