@@ -1,47 +1,12 @@
 @echo off
-setlocal EnableExtensions
-chcp 65001 >nul
-
-:: Inicializacao e elevacao de privilegios - bloco da versao que abria corretamente.
-if /i "%~1"=="__debug_admin" goto :principal
 net session >nul 2>&1
 if errorlevel 1 (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '__debug_admin' -Verb RunAs"
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
   exit /b
 )
-goto :principal
-
-:principal
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-
-:: -----------------------------------------------------------
-::  REGISTRO SILENCIOSO - nada aparece na tela
-:: -----------------------------------------------------------
-:: Icones da area de trabalho
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" /t REG_DWORD /d 0 /f >nul 2>&1
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" /t REG_DWORD /d 0 /f >nul 2>&1
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" /t REG_DWORD /d 0 /f >nul 2>&1
-
-:: Visualizador de Fotos do Windows como aplicativo padrao das imagens
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".bmp" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".dib" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".gif" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jfif" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpe" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpeg" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jpg" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".jxr" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".png" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-reg add "HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations" /v ".wdp" /t REG_SZ /d "PhotoViewer.FileAssoc.Tiff" /f >nul 2>&1
-
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Add-Type -MemberDefinition '[DllImport(\"shell32.dll\")]public static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);' -Name 'Win32' -Namespace 'API'; [API.Win32]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)" >nul 2>&1
-
-echo Iniciando menu em modo visivel para diagnostico...
-powershell -NoProfile -ExecutionPolicy Bypass -STA -Command "$ErrorActionPreference='Stop'; try { $s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); if($a -lt 0 -or $b -le $a){ throw 'Marcadores PSSTART/PSEND nao encontrados no arquivo.' }; iex $s.Substring($a, $b-$a) } catch { $detail = ($_ | Format-List * -Force | Out-String); $detail += [Environment]::NewLine + 'STACK:' + [Environment]::NewLine + $_.ScriptStackTrace; $log = Join-Path $env:TEMP 'MENU_DIAGNOSTICO_ERRO.txt'; $detail | Out-File -FilePath $log -Encoding UTF8; Write-Host ''; Write-Host 'ERRO DETALHADO:' -ForegroundColor Red; Write-Host $detail -ForegroundColor Red; Write-Host ('Log salvo em: ' + $log); Read-Host 'Pressione ENTER para fechar' }"
-echo.
-echo O menu/PowerShell foi encerrado. Pressione uma tecla para fechar esta janela.
-pause >nul
+powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
 exit /b
 #PSSTART
 Add-Type -AssemblyName System.Windows.Forms
@@ -56,8 +21,6 @@ $WINRARDIR = "C:\Program Files\WinRAR"
 # ----------------------------------------------
 
 
-# --- WinRAR: nao gerar chave ficticia; usar licenca valida se disponivel. ---
-
 $global:tasks = New-Object System.Collections.ArrayList
 $global:totalEtapas = 0
 $global:etapaAtual = 0
@@ -68,8 +31,9 @@ function Start-Task($titulo, $script, $total = 1) {
     $out = Join-Path $env:TEMP ("inst_" + ($titulo -replace '[^a-zA-Z0-9]','') + ".txt")
     $script = "& { " + $script + " } *> '$out'; exit `$LASTEXITCODE"
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    if (Test-Path $out) { Remove-Item $out -Force -ErrorAction SilentlyContinue }
     $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc" -WindowStyle Hidden -PassThru
-    [void]$global:tasks.Add(@{ Nome = $titulo; Proc = $p; Out = $out })
+    [void]$global:tasks.Add(@{ Nome = $titulo; Proc = $p; Out = $out; Lido = 0; Ok = 0; Ja = 0; Erro = 0 })
     
     $global:totalEtapas = $total
     $global:etapaAtual = 0
@@ -94,22 +58,11 @@ function Start-Task($titulo, $script, $total = 1) {
         $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 230, 255)
     }
     
-    Log "Iniciando $titulo..."
+    Log "=== Iniciando: $titulo ==="
 }
 
 function W($id) { "winget install -e --id $id --source winget --accept-package-agreements --accept-source-agreements" }
-#PSSTART
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
-
-$drive     = $env:BATDRIVE
-$BASE      = "$drive\Windows\Tudo"
-$KEY       = "$BASE\rarreg.key"
-$WINRARDIR = "C:\Program Files\WinRAR"
-
-# ----------------------------------------------
-
+$rarKey = "if (Test-Path '$KEY') { New-Item -ItemType Directory -Force -Path '$WINRARDIR' | Out-Null; Copy-Item '$KEY' '$WINRARDIR\rarreg.key' -Force; Write-Host 'Licenca do WinRAR copiada.' } else { Write-Host 'rarreg.key gerado pelo script.' }"
 
 # --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
 if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
@@ -120,29 +73,70 @@ if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
 }
 # --------------------------------------------
 
+# --- ATIVAR VISUALIZADOR DE FOTOS CLASSICO (SILENCIOSO) ---
+$photoPath = "HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
+if (-not (Test-Path $photoPath)) { New-Item -Path $photoPath -Force | Out-Null }
+foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
+    New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
+}
 
+# --------------------------------------------	
+
+# --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
+$iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
+if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
+
+# 0 = Mostrar | 1 = Ocultar
+Set-ItemProperty -Path $iconsPath -Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" -Value 0 -Type DWord -Force # Meu Computador
+Set-ItemProperty -Path $iconsPath -Name "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" -Value 0 -Type DWord -Force # Arquivos do Usuario
+Set-ItemProperty -Path $iconsPath -Name "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" -Value 0 -Type DWord -Force # Painel de Controle
+
+# --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
+$refreshCode = @'
+[System.Runtime.InteropServices.DllImport("Shell32.dll")]
+public static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
+public static void Atualizar() {
+    SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero);
+}
+'@
+Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -ErrorAction SilentlyContinue
+[WinAPI.Desktop]::Atualizar()
+
+# Gera um passo com marcacoes que o LOG entende: ##AGORA / ##OK / ##JA / ##ERRO
+function Passo($n, $tot, $nome, $cmd) {
+    "Write-Host '##AGORA [$n/$tot] $nome'; `$global:LASTEXITCODE = 0; $cmd; `$c = `$global:LASTEXITCODE; " +
+    "if (`$c -eq 0) { Write-Host '##OK $nome' } elseif (`$c -eq -1978335189) { Write-Host '##JA $nome' } " +
+    "else { Write-Host ('##ERRO $nome (codigo ' + `$c + ')'); `$global:falhou = 1 }"
+}
+function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$global:LASTEXITCODE = [int]`$global:falhou" }
+
+function Criar-PastaOffice {
+    $pasta = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Office 365'
+    if (Test-Path $pasta) { Log "Pasta 'Office 365' ja existe na Area de Trabalho." }
+    else { New-Item -ItemType Directory -Force -Path $pasta | Out-Null; Log "Pasta 'Office 365' criada na Area de Trabalho." }
+}
+
+# Extrai o instalador do Office para a pasta temporaria (NAO copia para a pasta Office 365)
 function Preparar-Office {
     try {
-        Log "Preparando o instalador do Office..."
         $exe = Join-Path $env:TEMP 'OfficeSetup.exe'
         $txt = [IO.File]::ReadAllText($env:INSTALLER_FILE)
         $m = '###' + 'PAYLOAD###'
         $i = $txt.LastIndexOf($m)
         if ($i -lt 0) { throw "Instalador do Office nao encontrado dentro do arquivo." }
-        $raw = $txt.Substring($i + $m.Length); $f = $raw.IndexOf('#'+'PSEND'); if ($f -ge 0) { $raw = $raw.Substring(0, $f) }; $bytes = [Convert]::FromBase64String(($raw -replace '[^A-Za-z0-9+/=]',''))
+        $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace '[^A-Za-z0-9+/=]',''))
         try { [IO.File]::WriteAllBytes($exe, $bytes) }
         catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format 'HHmmss') + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
-        Log "Instalador pronto: $exe"
         return $exe
     } catch {
         Log "ERRO ao preparar o Office: $_"
-        [System.Windows.Forms.MessageBox]::Show("Erro ao preparar o Office:`r`n$_") | Out-Null
         return $null
     }
 }
 function OfficeCmd {
     $exe = Preparar-Office
-    if ($exe) { "Start-Process -FilePath '$exe' -Wait" } else { "Write-Host 'ERRO: instalador do Office indisponivel'" }
+    if ($exe) { "`$p = Start-Process -FilePath '$exe' -Wait -PassThru; `$global:LASTEXITCODE = `$p.ExitCode" }
+    else { "`$global:LASTEXITCODE = 1" }
 }
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -150,8 +144,8 @@ $programIcon = [System.Drawing.SystemIcons]::Application
 $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
-$form.Text = "ASSISTENTE DE FORMATACAO PRO"
-$form.Size = New-Object System.Drawing.Size(780, 650)
+$form.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
+$form.Size = New-Object System.Drawing.Size(780, 710)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
@@ -166,7 +160,7 @@ $titlePanel.BackColor = [System.Drawing.Color]::FromArgb(20, 25, 35)
 $form.Controls.Add($titlePanel)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = "ASSISTENTE DE FORMATACAO"
+$title.Text = "ASSISTENTE DE FORMATAÇÃO"
 $title.Font = New-Object System.Drawing.Font("Segoe UI Black", 16, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $title.AutoSize = $true
@@ -181,165 +175,40 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(400, 20)
 $titlePanel.Controls.Add($subTitle)
 
-
-
-
-
 $actions = [ordered]@{
-    "Instalar Google Chrome" = {
-        # Script separado para evitar conflitos de aspas no Start-Task
-        $psScript = @'
-$ErrorActionPreference = "Stop"
-
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-    $installer = Join-Path $env:TEMP "ChromeSetup.msi"
-    $url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
-
-    Write-Output "Baixando instalador oficial do Google Chrome..."
-    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-
-    if (!(Test-Path $installer) -or (Get-Item $installer).Length -lt 1MB) {
-        throw "Download incompleto ou arquivo invalido."
+    "Ativacão do Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) " ; Log "Tela de Ativiação do Windows foi Aberta" }
+    "Instalar Google Chrome"        = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
+    "Instalar WinRAR"               = { Start-Task "WinRAR" (Lote @((Passo 1 1 "WinRAR" (W "RARLab.WinRAR")), $rarKey)) }
+    "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
+    "Abrir instalador do Office"    = { $exe = Preparar-Office; if ($exe) { Start-Process -FilePath $exe; Log "Instalador do Office aberto." } Criar-PastaOffice }
+    "TUDO (Sem MSI e sem Office)"   = {
+        Start-Task "TUDO Sem MSI e sem Office" (Lote @(
+            (Passo 1 3 "Chrome" (W "Google.Chrome")),
+            (Passo 2 3 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
+            (Passo 3 3 "WinRAR" (W "RARLab.WinRAR")), $rarKey
+        )) -total 3
     }
-
-    $signature = Get-AuthenticodeSignature -FilePath $installer
-    if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Google") {
-        throw "Assinatura digital invalida. Instalacao cancelada."
+    "INSTALAR TUDO (Sem MSI)"       = {
+        Criar-PastaOffice
+        Start-Task "TUDO Sem MSI" (Lote @(
+            (Passo 1 4 "Chrome" (W "Google.Chrome")),
+            (Passo 2 4 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
+            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
+            (Passo 4 4 "Office" (OfficeCmd))
+        )) -total 4
     }
-
-    Write-Output "Instalando Google Chrome..."
-    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
-        -ArgumentList "/i `"$installer`" /qn /norestart" `
-        -Wait -PassThru
-
-    if ($process.ExitCode -notin @(0, 3010)) {
-        throw "O instalador retornou o codigo $($process.ExitCode)."
-    }
-
-    Write-Output "Google Chrome instalado com sucesso."
-    exit 0
-}
-catch {
-    Write-Output "ERRO: $($_.Exception.Message)"
-    exit 1
-}
-'@
-
-        $encoded = [Convert]::ToBase64String(
-            [Text.Encoding]::Unicode.GetBytes($psScript)
-        )
-
-        Start-Task "Chrome" (
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + $encoded
-        )
-    }
-	"Ativacão do Windows"           = { Start-Task "Ativacao do Windows" "& ([ScriptBlock]::Create((irm https://get.activated.win))) ; exit 0" }
-    "Instalar Adobe Acrobat Reader" = {
-        Start-Task "Acrobat" (W "Adobe.Acrobat.Reader.64-bit")
-    }
-
-    "Instalar WinRAR" = {
-        Start-Task "WinRAR" ((W "RARLab.WinRAR") + "; " + $rarKey)
-    }
-
-    "Instalar MSI Afterburner" = {
-        Start-Task "Afterburner" (W "Guru3D.Afterburner")
-    }
-
-    "Abrir instalador do Office" = {
-        $exe = Preparar-Office
-
-        if ($exe) {
-            Start-Process -FilePath $exe -WindowStyle Normal
-            Log "Instalador do Office aberto."
-        }
-    }
-    "INSTALAR TUDO (Sem Office)"    = {
-        $apps = @(
-            @{ N = 'Google Chrome';         Id = 'Google.Chrome' },
-            @{ N = 'Adobe Acrobat Reader';  Id = 'Adobe.Acrobat.Reader.64-bit' },
-            @{ N = 'WinRAR';                Id = 'RARLab.WinRAR' },
-            @{ N = 'MSI Afterburner';       Id = 'Guru3D.Afterburner' }
-        )
-        $total = $apps.Count
-        $linhas = @()
-        $n = 0
-        
-        foreach ($a in $apps) {
-            $n++
-            $faltam = $total - $n
-            
-            # 1. Imprime no Log detalhes de qual app está instalando e quantos faltam
-            $linhas += "Write-Output '-------------------------------------------------'"
-            $linhas += "Write-Output '-> [$n de $total] INSTALANDO AGORA: " + $a.N + "'"
-            $linhas += "Write-Output '-> Faltam $faltam aplicativo(s) na fila...'"
-            $linhas += "Write-Output '-------------------------------------------------'"
-            
-            # 2. Executa a instalação silenciosa ignorando erros de hash do Winget
-            $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
-            $linhas += "`$r = `$LASTEXITCODE"
-            
-            # 3. Aplica a chave do WinRAR caso seja ele
-            if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
-            
-            # 4. Confirma o resultado interno
-            $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
-            $linhas += "Write-Output ''" # Pula uma linha no log para ficar organizado
-        }
-        
-        $linhas += "Write-Output '================================================='"
-        $linhas += "Write-Output '      TODAS AS INSTALACOES FORAM CONCLUIDAS!     '"
-        $linhas += "Write-Output '================================================='"
-        $linhas += "exit 0"
-        
-        Start-Task "Lote de Apps (Sem Office)" ($linhas -join "; ") -total $total
-    }
-    
     "INSTALAR TUDO + Office"        = {
-        # Primeiro instala todos os aplicativos comuns; o Office fica explicitamente por ultimo.
-        $apps = @(
-            @{ N = 'Google Chrome';        Id = 'Google.Chrome' },
-            @{ N = 'Adobe Acrobat Reader'; Id = 'Adobe.Acrobat.Reader.64-bit' },
-            @{ N = 'WinRAR';               Id = 'RARLab.WinRAR' },
-            @{ N = 'MSI Afterburner';      Id = 'Guru3D.Afterburner' }
-        )
-        $total = $apps.Count + 1
-        $linhas = @()
-        $n = 0
-
-        foreach ($a in $apps) {
-            $n++
-            $faltam = $total - $n
-            $linhas += "Write-Output '-------------------------------------------------'"
-            $linhas += "Write-Output '-> [$n de $total] INSTALANDO AGORA: " + $a.N + "'"
-            $linhas += "Write-Output '-> Faltam $faltam etapa(s)...'"
-            $linhas += "Write-Output '-------------------------------------------------'"
-            $linhas += (W $a.Id) + " --silent --disable-interactivity --ignore-security-hash"
-            $linhas += "`$r = `$LASTEXITCODE"
-            if ($a.N -eq 'WinRAR') { $linhas += $rarKey }
-            $linhas += "Write-Output ('RESULT|" + $a.N + "|' + `$r)"
-            $linhas += "Write-Output ''"
-        }
-
-        # Office sempre e somente depois dos quatro aplicativos acima.
-        $linhas += "Write-Output '-------------------------------------------------'"
-        $linhas += "Write-Output '-> [$total de $total] INSTALANDO AGORA: Microsoft Office (ULTIMA ETAPA)'"
-        $linhas += "Write-Output '-> Faltam 0 etapa(s)...'"
-        $linhas += "Write-Output '-------------------------------------------------'"
-        $linhas += (OfficeCmd)
-        $linhas += "`$r = if (`$?) { 0 } else { 1 }"
-        $linhas += "Write-Output ('RESULT|Microsoft Office|' + `$r)"
-        $linhas += "Write-Output ''"
-        $linhas += "Write-Output '================================================='"
-        $linhas += "Write-Output '      TODAS AS ETAPAS FORAM PROCESSADAS!         '"
-        $linhas += "Write-Output '================================================='"
-        $linhas += "exit 0"
-
-        Start-Task "Lote de Apps (Com Office)" ($linhas -join "; ") -total $total
+        Criar-PastaOffice
+        Start-Task "TUDO com Office" (Lote @(
+            (Passo 1 5 "Chrome" (W "Google.Chrome")),
+            (Passo 2 5 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
+            (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
+            (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner")),
+            (Passo 5 5 "Office" (OfficeCmd))
+        )) -total 5
     }
 }
+
 $y = 65
 foreach ($name in $actions.Keys) {
     $btn = New-Object System.Windows.Forms.Button
@@ -350,7 +219,7 @@ foreach ($name in $actions.Keys) {
     $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
 
-    if ($name -like "INSTALAR TUDO (Sem Office)*") { 
+    if ($name -like "INSTALAR TUDO (Sem MSI)*" -or $name -like "TUDO (Sem MSI e sem Office)*") { 
         $btn.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 200)
         $btn.ForeColor = [System.Drawing.Color]::White
         $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 230, 255)
@@ -370,12 +239,10 @@ foreach ($name in $actions.Keys) {
         $btn.FlatAppearance.BorderSize = 1
     }
 
-    $bgOriginal = $btn.BackColor
+    $btn.Tag = @{ Acao = $actions[$name]; Cor = $btn.BackColor }
     $btn.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(40, 55, 80) })
-    $btn.Add_MouseLeave({ $this.BackColor = $bgOriginal })
-
-    $btn.Tag = $actions[$name]
-    $btn.Add_Click({ try { & $this.Tag } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
+    $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.Cor })
+    $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     $form.Controls.Add($btn)
     $y += 52
 }
@@ -385,7 +252,7 @@ $sair.Text = "Sair"
 $sair.Size = New-Object System.Drawing.Size(290, 38)
 $sair.Location = New-Object System.Drawing.Point(20, ($y + 8))
 $sair.FlatStyle = "Flat"
-$sair.Font = New-Object System.Drawing.Font("Segoe UI Bold", 10)
+$sair.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
 $sair.ForeColor = [System.Drawing.Color]::White
 $sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
@@ -395,7 +262,7 @@ $form.Controls.Add($sair)
 
 $logTitle = New-Object System.Windows.Forms.Label
 $logTitle.Text = "LOG DE INSTALACAO"
-$logTitle.Font = New-Object System.Drawing.Font("Segoe UI Bold", 12)
+$logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $logTitle.AutoSize = $true
 $logTitle.Location = New-Object System.Drawing.Point(335, 65)
@@ -420,7 +287,7 @@ $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
 $logBox.Location = New-Object System.Drawing.Point(335, 142)
-$logBox.Size = New-Object System.Drawing.Size(410, 428)
+$logBox.Size = New-Object System.Drawing.Size(410, 488)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(6, 8, 12)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 130)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5)
@@ -428,67 +295,62 @@ $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $form.Controls.Add($logBox)
 
 $watermark = New-Object System.Windows.Forms.Label
-$watermark.Text = "Elson (Criatividade E Tudo)"
+$watermark.Text = "ELSON (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(575, 578)
+$watermark.Location = New-Object System.Drawing.Point(575, 638)
 $form.Controls.Add($watermark)
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
+function Ler-Novas($t) {
+    if (-not (Test-Path $t.Out)) { return }
+    $linhas = @(Get-Content $t.Out -ErrorAction SilentlyContinue)
+    for ($k = $t.Lido; $k -lt $linhas.Count; $k++) {
+        $l = "$($linhas[$k])".Trim()
+        if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
+            Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
+            $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
+            if ($global:totalEtapas -gt 1) { $progressBar.Value = [Math]::Min([int]$matches[1] - 1, $progressBar.Maximum) }
+        }
+        elseif ($l -match '^##OK (.+)$')   { $t.Ok++;   Log ("  [OK]   " + $matches[1] + " instalado") }
+        elseif ($l -match '^##JA (.+)$')   { $t.Ja++;   Log ("  [JA]   " + $matches[1] + " ja estava instalado") }
+        elseif ($l -match '^##ERRO (.+)$') {
+            $t.Erro++; Log ("  [ERRO] " + $matches[1])
+            if ($matches[1] -like '*Afterburner*') { Log "         Baixe manualmente no site da MSI (abrindo...)"; Start-Process "https://www.msi.com/Landing/afterburner/graphics-cards" }
+        }
+        elseif ($l -match '^##INFO (.+)$') { Log ("         " + $matches[1]) }
+    }
+    $t.Lido = $linhas.Count
+}
+
 $timer.Add_Tick({
     foreach ($t in @($global:tasks)) {
-        if ($global:totalEtapas -gt 1 -and (Test-Path $t.Out)) {
-            $conteudo = Get-Content $t.Out -ErrorAction SilentlyContinue
-            $etapaDetectada = ($conteudo | Select-String -Pattern '\[(\d+)/\d+\]' | Select-Object -Last 1)
-            if ($etapaDetectada -match '\[(\d+)/') {
-                $num = [int]$matches[1]
-                if ($num -gt $global:etapaAtual) {
-                    $global:etapaAtual = $num
-                    $progressBar.Value = [Math]::Min($num, $global:totalEtapas)
-                    $lblStatus.Text = "Progresso do lote: Etapa $num de $global:totalEtapas..."
-                }
-            }
-        }
-
+        Ler-Novas $t
         if ($t.Proc.HasExited) {
-            $c = $t.Proc.ExitCode
-            $res = @()
-            if (Test-Path $t.Out) { $res = @(Get-Content $t.Out -ErrorAction SilentlyContinue | Where-Object { $_ -match '^RESULT\|' }) }
-            if ($res.Count -gt 0) {
-                foreach ($l in $res) {
-                    $p = $l -split '\|'; $an = $p[1]; $ac = [int64]$p[2]
-                    if ($ac -eq 0) { Log ("Aplicativo instalado - " + $an) }
-                    elseif ($ac -eq -1978335189 -or $ac -eq -1978335135) { Log ("Aplicativo ja estava instalado - " + $an) }
-                    else { Log ("ERRO ao instalar " + $an + " (codigo $ac)") }
-                }
-            }
-            elseif ($c -eq 0) { Log ("Aplicativo instalado - " + $t.Nome) }
-            elseif ($c -eq -1978335189) { Log ("Aplicativo ja estava instalado - " + $t.Nome) }
-            else {
-                Log ("ERRO ao instalar " + $t.Nome + " (codigo $c)")
-                if (Test-Path $t.Out) {
-                    Get-Content $t.Out | Where-Object { $_ -match '\w' -and $_ -notmatch '^[\s\-\\|/]+$' } | Select-Object -Last 4 | ForEach-Object { Log ("     > " + $_.Trim()) }
-                }
-            }
+            Start-Sleep -Milliseconds 200
+            Ler-Novas $t
+            Log ("=== Fim: " + $t.Nome + " | instalados: " + $t.Ok + " | ja tinha: " + $t.Ja + " | erros: " + $t.Erro + " ===")
             $global:tasks.Remove($t)
-            
             if ($global:tasks.Count -gt 0) {
-                $proximaTarefa = $global:tasks[0].Nome
-                $lblStatus.Text = "Instalando: $proximaTarefa (Fila: " + $global:tasks.Count + " restante)..."
+                $lblStatus.Text = "Ainda em andamento: " + $global:tasks[0].Nome + " (" + $global:tasks.Count + " na fila)"
             } else {
                 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
                 $progressBar.Value = $progressBar.Maximum
-                $lblStatus.Text = "Concluido com sucesso!"
-                $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+                if ($t.Erro -gt 0) {
+                    $lblStatus.Text = "Concluido com erros - veja o log"
+                    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 90, 90)
+                } else {
+                    $lblStatus.Text = "Concluido com sucesso!"
+                    $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+                }
             }
         }
     }
 })
 $timer.Start()
 
-Log "Visualizador de Fotos do Windows Habilitado."
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
 
@@ -129263,5 +129125,3 @@ hJagZgiPSPJGFIro5sz4AcymgLySNerGcKsYXLgy57oPlJIEM6gTSo3EfptjcOZwy4JjAL1zvVY6
 yPt8CIfxFjnxCMslu5S0nPYPecRRcZ9Gcb5xPZSxGtkGsFTfLHXcAN/hHFSEtY460SEr/iVxol/d
 xdEXh30dGt67hxWDlJdmnmXR4lLAYOwNEapc8CyNH4yMCGzMdPjO/khqi2REuQNLVzznpFTuE3at
 9YFtVtlaas43AQA=
-
-#PSEND
