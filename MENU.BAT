@@ -25,6 +25,29 @@ $WINRARDIR = "C:\Program Files\WinRAR"
 # TWEAKS DO SISTEMA (Executados invisivelmente ao abrir o BAT)
 # =====================================================================
 
+# --- DESATIVAR SUSPENSAO, DESLIGAMENTO DE TELA E HIBERNACAO ---
+try {
+    # Desligar tela / Video (Tomada e Bateria -> 0 = Nunca)
+    powercfg /change monitor-timeout-ac 0 > $null
+    powercfg /change monitor-timeout-dc 0 > $null
+    
+    # Suspender / Standby (Tomada e Bateria -> 0 = Nunca)
+    powercfg /change standby-timeout-ac 0 > $null
+    powercfg /change standby-timeout-dc 0 > $null
+
+    # Hibernar (Tomada e Bateria -> 0 = Nunca)
+    powercfg /change hibernate-timeout-ac 0 > $null
+    powercfg /change hibernate-timeout-dc 0 > $null
+    
+    # Desativa completamente o recurso de hibernação do Windows para evitar travamentos
+    powercfg /hibernate off > $null
+
+    # Forca a aplicacao imediata no plano atual
+    powercfg /setactive SCHEME_CURRENT > $null
+} catch {
+    # Silencioso caso nao tenha permissao ou suporte a algum parametro
+}
+
 # --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
 $iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
 if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
@@ -121,7 +144,7 @@ function Passo($n, $tot, $nome, $cmd) {
 function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$global:LASTEXITCODE = [int]`$global:falhou" }
 
 # =====================================================================
-# FUNCOES DO OFFICE (Simples e Direta - Apenas Extrai e Abre)
+# FUNCOES DO OFFICE
 # =====================================================================
 
 function Preparar-Office {
@@ -177,7 +200,7 @@ $title.Location = New-Object System.Drawing.Point(20, 10)
 $titlePanel.Controls.Add($title)
 
 $subTitle = New-Object System.Windows.Forms.Label
-$subTitle.Text = "CENTRAL DE AUTOMACAO"
+$subTitle.Text = "CENTRAL DE AUTOMAÇÃO"
 $subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
 $subTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $subTitle.AutoSize = $true
@@ -189,13 +212,12 @@ $titlePanel.Controls.Add($subTitle)
 # =====================================================================
 
 $actions = [ordered]@{
-    "Ativacao do Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
+    "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
     "Instalar Google Chrome"        = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
     "Instalar WinRAR"               = { Start-Task "WinRAR" (Lote @((Passo 1 1 "WinRAR" (W "RARLab.WinRAR")), $rarKey)) }
     "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
     
-    # Botao dedicado para abrir o instalador do Office diretamente na tela
-    "Abrir instalador do Office"    = {
+    "Instalar Apenas o Office"      = {
         $exe = Preparar-Office
         if ($exe) {
             Start-Process -FilePath $exe
@@ -210,14 +232,15 @@ $actions = [ordered]@{
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
             (Passo 2 3 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
             (Passo 3 3 "WinRAR" (W "RARLab.WinRAR")), $rarKey
-        )) -total 3
+        ))
     }
     
     "INSTALAR TUDO (Sem MSI)"       = {
-        Start-Task "TUDO Sem MSI" (Lote @(
+        Start-Task "INSTALAR TUDO (Sem MSI)" (Lote @(
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
             (Passo 2 4 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
-            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey
+            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
+            (Passo 4 4 "Office" ('$txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE"); $m = "###" + "PAYLOAD###"; $i = $txt.LastIndexOf($m); if ($i -ge 0) { $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[^A-Za-z0-9+/=]","")); $exe = Join-Path $env:TEMP "OfficeSetup.exe"; try { [IO.File]::WriteAllBytes($exe, $bytes) } catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }; Start-Process -FilePath $exe }'))
         )) -total 4
     }
     
@@ -226,7 +249,8 @@ $actions = [ordered]@{
             (Passo 1 5 "Chrome" (W "Google.Chrome")),
             (Passo 2 5 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
             (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
-            (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner"))
+            (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner")),
+            (Passo 5 5 "Office" ('$txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE"); $m = "###" + "PAYLOAD###"; $i = $txt.LastIndexOf($m); if ($i -ge 0) { $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[^A-Za-z0-9+/=]","")); $exe = Join-Path $env:TEMP "OfficeSetup.exe"; try { [IO.File]::WriteAllBytes($exe, $bytes) } catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }; Start-Process -FilePath $exe }'))
         )) -total 5
     }
 }
@@ -239,6 +263,9 @@ $y = 65
 foreach ($name in $actions.Keys) {
     $btn = New-Object System.Windows.Forms.Button
     $btn.Text = $name
+if ($name -eq "Instalar Apenas o Office") {
+    $script:btnOffice = $btn
+}
     $btn.Size = New-Object System.Drawing.Size(290, 46)
     $btn.Location = New-Object System.Drawing.Point(20, $y)
     $btn.FlatStyle = "Flat"
@@ -287,7 +314,7 @@ $sair.Add_Click({ $form.Close() })
 $form.Controls.Add($sair)
 
 $logTitle = New-Object System.Windows.Forms.Label
-$logTitle.Text = "LOG DE INSTALACAO"
+$logTitle.Text = "LOG DE INSTALAÇÃO"
 $logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $logTitle.AutoSize = $true
@@ -339,6 +366,12 @@ function Ler-Novas($t) {
     $linhas = @(Get-Content $t.Out -ErrorAction SilentlyContinue)
     for ($k = $t.Lido; $k -lt $linhas.Count; $k++) {
         $l = "$($linhas[$k])".Trim()
+		if ($l -eq "##CLIQUE_OFFICE") {
+    $form.BeginInvoke([Action]{
+        Clicar-Office
+    }) | Out-Null
+    continue
+    }
         if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
             Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
             $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
