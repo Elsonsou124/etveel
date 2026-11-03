@@ -94,6 +94,18 @@ $rarKey = '$WINRARDIR = "C:\Program Files\WinRAR"; if (-not (Test-Path "$WINRARD
 
 # --- COPIADOR DE ATALHOS DO OFFICE ---
 $officeShortcuts = '$achou = $false; $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"; $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"); foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) { foreach ($dir in $pastas) { if (Test-Path $dir) { $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }; foreach ($arq in $arquivos) { if (-not $achou) { if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }; $achou = $true }; Copy-Item -Path $arq.FullName -Destination $desk -Force } } } }; if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" } else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }'
+$officeInstallAndShortcuts = @'
+$txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE")
+$m = "###" + "PAYLOAD###"
+$i = $txt.LastIndexOf($m)
+if ($i -lt 0) { throw "Instalador do Office nao encontrado dentro do arquivo." }
+$bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[^A-Za-z0-9+/=]", ""))
+$exe = Join-Path $env:TEMP "OfficeSetup.exe"
+try { [IO.File]::WriteAllBytes($exe, $bytes) }
+catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
+$processo = Start-Process -FilePath $exe -Wait -PassThru
+'@
+$officeInstallAndShortcuts += "`r`n" + $officeShortcuts
 
 # =====================================================================
 # FUNCOES DO SISTEMA DE TAREFAS E LOGS
@@ -262,8 +274,9 @@ $actions = [ordered]@{
     "Instalar Apenas o Office"      = {
         $exe = Preparar-Office
         if ($exe) {
-            Start-Process -FilePath $exe
-            Log "Instalador do Office aberto na tela com sucesso."
+            Log "Instalador do Office iniciado. Os atalhos serao copiados quando ele fechar."
+            $scriptOffice = '$processo = Start-Process -FilePath "' + $exe + '" -Wait -PassThru; ' + $officeShortcuts
+            Start-Task "Office e atalhos" $scriptOffice
         }
     }
     
@@ -282,7 +295,7 @@ $actions = [ordered]@{
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
             (Passo 2 4 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
             (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
-            (Passo 4 4 "Office" ('$txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE"); $m = "###" + "PAYLOAD###"; $i = $txt.LastIndexOf($m); if ($i -ge 0) { $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[^A-Za-z0-9+/=]","")); $exe = Join-Path $env:TEMP "OfficeSetup.exe"; try { [IO.File]::WriteAllBytes($exe, $bytes) } catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }; Start-Process -FilePath $exe }'))
+            (Passo 4 4 "Office" $officeInstallAndShortcuts)
         )) -total 4
     }
     
@@ -292,7 +305,7 @@ $actions = [ordered]@{
             (Passo 2 5 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
             (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
             (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner")),
-            (Passo 5 5 "Office" ('$txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE"); $m = "###" + "PAYLOAD###"; $i = $txt.LastIndexOf($m); if ($i -ge 0) { $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[^A-Za-z0-9+/=]","")); $exe = Join-Path $env:TEMP "OfficeSetup.exe"; try { [IO.File]::WriteAllBytes($exe, $bytes) } catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }; Start-Process -FilePath $exe }'))
+            (Passo 5 5 "Office" $officeInstallAndShortcuts)
         )) -total 5
     }
 }
