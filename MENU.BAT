@@ -94,6 +94,65 @@ $rarKey = '$WINRARDIR = "C:\Program Files\WinRAR"; if (-not (Test-Path "$WINRARD
 
 # --- COPIADOR DE ATALHOS DO OFFICE ---
 $officeShortcuts = '$achou = $false; $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"; $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"); foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) { foreach ($dir in $pastas) { if (Test-Path $dir) { $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }; foreach ($arq in $arquivos) { if (-not $achou) { if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }; $achou = $true }; Copy-Item -Path $arq.FullName -Destination $desk -Force } } } }; if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" } else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }'
+$officeWaitAndClose = @'
+$processo = Start-Process -FilePath $exe -PassThru
+$officePids = New-Object 'System.Collections.Generic.HashSet[int]'
+[void]$officePids.Add([int]$processo.Id)
+$officeUiaReady = $false
+try { Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; $officeUiaReady = $true } catch {}
+$officeConcluidoFechado = $false
+while ($true) {
+    $listaProcessos = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $novos = $true
+    while ($novos) {
+        $novos = $false
+        foreach ($item in $listaProcessos) {
+            if ($officePids.Contains([int]$item.ParentProcessId) -and -not $officePids.Contains([int]$item.ProcessId)) {
+                [void]$officePids.Add([int]$item.ProcessId)
+                $novos = $true
+            }
+        }
+    }
+    $processosVivos = @($listaProcessos | Where-Object { $officePids.Contains([int]$_.ProcessId) })
+    if ($processosVivos.Count -eq 0) { break }
+    if ($officeUiaReady -and -not $officeConcluidoFechado) {
+        try {
+            $janelas = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+            foreach ($janela in $janelas) {
+                if (-not $officePids.Contains([int]$janela.Current.ProcessId)) { continue }
+                $elementos = @($janela) + @($janela.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+                $nomes = New-Object System.Collections.Generic.List[string]
+                $botoesFechar = New-Object System.Collections.ArrayList
+                foreach ($elemento in $elementos) {
+                    try {
+                        $nome = [string]$elemento.Current.Name
+                        if ($nome) { [void]$nomes.Add($nome) }
+                        if ($elemento.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $nome -match '^(?i:Fechar|Close|Concluir|Finish|Finalizar|Done)$' -and $elemento.Current.IsEnabled) { [void]$botoesFechar.Add($elemento) }
+                    } catch {}
+                }
+                $textoJanela = [string]::Join(' ', $nomes.ToArray())
+                $instalacaoConcluida = $textoJanela -match '(?i)(office|microsoft 365).{0,100}(installed|instalad[oa]|conclu[ií]d[oa])|(installation|instala[cç][aã]o).{0,60}(complete|completed|conclu[ií]d[oa]|finalizada)|(you.?re all set|all set|tudo pronto|pronto para usar)'
+                if ($instalacaoConcluida -and $botoesFechar.Count -gt 0) {
+                    foreach ($botao in $botoesFechar) {
+                        try {
+                            $padrao = $botao.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                            $padrao.Invoke()
+                            Write-Host '##INFO Office terminou a instalacao. Fechando a tela automaticamente.'
+                            $officeConcluidoFechado = $true
+                            break
+                        } catch {}
+                    }
+                }
+                if ($officeConcluidoFechado) { break }
+            }
+        } catch {}
+    }
+    Start-Sleep -Seconds 2
+}
+$processo.Refresh()
+$global:LASTEXITCODE = [int]$processo.ExitCode
+if (-not $officeConcluidoFechado) { Write-Host '##INFO O instalador do Office foi encerrado.' }
+'@
 $officeInstallAndShortcuts = @'
 $txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE")
 $m = "###" + "PAYLOAD###"
@@ -103,9 +162,8 @@ $bytes = [Convert]::FromBase64String(($txt.Substring($i + $m.Length) -replace "[
 $exe = Join-Path $env:TEMP "OfficeSetup.exe"
 try { [IO.File]::WriteAllBytes($exe, $bytes) }
 catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
-$processo = Start-Process -FilePath $exe -Wait -PassThru
 '@
-$officeInstallAndShortcuts += "`r`n" + $officeShortcuts
+$officeInstallAndShortcuts += "`r`n" + $officeWaitAndClose + "`r`n" + $officeShortcuts
 
 # =====================================================================
 # FUNCOES DO SISTEMA DE TAREFAS E LOGS
@@ -122,7 +180,7 @@ function Start-Task($titulo, $script, $total = 1) {
     $script = "& { " + $script + " } *> '$out'; exit `$LASTEXITCODE"
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
     if (Test-Path $out) { Remove-Item $out -Force -ErrorAction SilentlyContinue }
-    $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc" -WindowStyle Hidden -PassThru
+    $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -STA -EncodedCommand $enc" -WindowStyle Hidden -PassThru
     [void]$global:tasks.Add(@{ Nome = $titulo; Proc = $p; Out = $out; Lido = 0; Ok = 0; Ja = 0; Erro = 0 })
     
     $global:totalEtapas = $total
@@ -274,8 +332,9 @@ $actions = [ordered]@{
     "Instalar Apenas o Office"      = {
         $exe = Preparar-Office
         if ($exe) {
-            Log "Instalador do Office iniciado. Os atalhos serao copiados quando ele fechar."
-            $scriptOffice = '$processo = Start-Process -FilePath "' + $exe + '" -Wait -PassThru; ' + $officeShortcuts
+            Log "Instalador do Office iniciado. Ele sera fechado automaticamente ao concluir."
+            $exeBase64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($exe))
+            $scriptOffice = '$exe = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String("' + $exeBase64 + '")); ' + $officeWaitAndClose + "`r`n" + $officeShortcuts
             Start-Task "Office e atalhos" $scriptOffice
         }
     }
