@@ -166,9 +166,8 @@ function Preparar-Office {
         return $null
     }
 }
-
 # =====================================================================
-# INTERFACE GRAFICA (Forms, Cores e Design)
+# INTERFACE GRAFICA (Layout numerado em painel)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -177,7 +176,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
 $form.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
-$form.Size = New-Object System.Drawing.Size(780, 710)
+$form.ClientSize = New-Object System.Drawing.Size(1120, 680)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
@@ -185,27 +184,59 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(12, 14, 20)
 $form.ForeColor = [System.Drawing.Color]::White
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
-$titlePanel = New-Object System.Windows.Forms.Panel
-$titlePanel.Size = New-Object System.Drawing.Size(780, 50)
-$titlePanel.Location = New-Object System.Drawing.Point(0, 0)
-$titlePanel.BackColor = [System.Drawing.Color]::FromArgb(20, 25, 35)
-$form.Controls.Add($titlePanel)
+# Cabeçalho
+$header = New-Object System.Windows.Forms.Panel
+$header.Location = New-Object System.Drawing.Point(0, 0)
+$header.Size = New-Object System.Drawing.Size(1120, 80)
+$header.BackColor = [System.Drawing.Color]::FromArgb(20, 25, 35)
+$form.Controls.Add($header)
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = "ASSISTENTE DE FORMATAÇÃO"
-$title.Font = New-Object System.Drawing.Font("Segoe UI Black", 16, [System.Drawing.FontStyle]::Bold)
+$title.Font = New-Object System.Drawing.Font("Segoe UI Black", 17, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(20, 10)
-$titlePanel.Controls.Add($title)
+$title.Location = New-Object System.Drawing.Point(24, 10)
+$header.Controls.Add($title)
 
 $subTitle = New-Object System.Windows.Forms.Label
-$subTitle.Text = "CENTRAL DE AUTOMAÇÃO"
-$subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$subTitle.Text = "CENTRAL DE AUTOMAÇÃO  |  AÇÕES NUMERADAS"
+$subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $subTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $subTitle.AutoSize = $true
-$subTitle.Location = New-Object System.Drawing.Point(400, 20)
-$titlePanel.Controls.Add($subTitle)
+$subTitle.Location = New-Object System.Drawing.Point(27, 48)
+$header.Controls.Add($subTitle)
+
+$sair = New-Object System.Windows.Forms.Button
+$sair.Text = "SAIR"
+$sair.Size = New-Object System.Drawing.Size(88, 38)
+$sair.Location = New-Object System.Drawing.Point(24, 620)
+$sair.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$sair.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
+$sair.ForeColor = [System.Drawing.Color]::White
+$sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
+$sair.Cursor = [System.Windows.Forms.Cursors]::Hand
+$sair.Add_Click({ $form.Close() })
+$form.Controls.Add($sair)
+$sair.BringToFront()
+
+# Seções do menu
+$individualTitle = New-Object System.Windows.Forms.Label
+$individualTitle.Text = "AÇÕES INDIVIDUAIS  |  01-06"
+$individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 200, 220)
+$individualTitle.AutoSize = $true
+$individualTitle.Location = New-Object System.Drawing.Point(24, 101)
+$form.Controls.Add($individualTitle)
+
+$bundleTitle = New-Object System.Windows.Forms.Label
+$bundleTitle.Text = "PACOTES DE INSTALAÇÃO  |  07-09"
+$bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+$bundleTitle.AutoSize = $true
+$bundleTitle.Location = New-Object System.Drawing.Point(24, 432)
+$form.Controls.Add($bundleTitle)
 
 # =====================================================================
 # LISTA DE ACOES DOS BOTOES
@@ -255,41 +286,45 @@ $actions = [ordered]@{
     }
 }
 
-# =====================================================================
-# RENDERIZACAO DOS BOTOES
-# =====================================================================
-
-$y = 65
+# Ações numeradas em cartões: 01-06 individuais, 07-09 pacotes
+$actionNumber = 0
 foreach ($name in $actions.Keys) {
+    $actionNumber++
     $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = $name
-if ($name -eq "Instalar Apenas o Office") {
-    $script:btnOffice = $btn
-}
-    $btn.Size = New-Object System.Drawing.Size(290, 46)
-    $btn.Location = New-Object System.Drawing.Point(20, $y)
-    $btn.FlatStyle = "Flat"
-    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
+    $btn.Text = ("{0:D2}`r`n{1}" -f $actionNumber, $name)
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+    $btn.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btn.UseVisualStyleBackColor = $false
 
-    if ($name -like "INSTALAR TUDO (Sem MSI)*" -or $name -like "TUDO (Sem MSI e sem Office)*") { 
-        $btn.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 200)
-        $btn.ForeColor = [System.Drawing.Color]::White
-        $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 230, 255)
-        $btn.FlatAppearance.BorderSize = 2
-    }
-    elseif ($name -like "INSTALAR TUDO + Office*") { 
-        $btn.BackColor = [System.Drawing.Color]::FromArgb(0, 200, 100)
-        $btn.ForeColor = [System.Drawing.Color]::FromArgb(10, 20, 10)
-        $btn.Font = New-Object System.Drawing.Font("Segoe UI Black", 10, [System.Drawing.FontStyle]::Bold)
-        $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 255, 150)
-        $btn.FlatAppearance.BorderSize = 2
-    }
-    else {
+    if ($actionNumber -le 6) {
+        $column = ($actionNumber - 1) % 2
+        $row = [int][Math]::Floor(($actionNumber - 1) / 2)
+        $btn.Size = New-Object System.Drawing.Size(292, 82)
+        $btn.Location = New-Object System.Drawing.Point((24 + ($column * 310)), (143 + ($row * 94)))
         $btn.BackColor = [System.Drawing.Color]::FromArgb(24, 30, 42)
         $btn.ForeColor = [System.Drawing.Color]::FromArgb(220, 235, 255)
         $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 180, 220)
         $btn.FlatAppearance.BorderSize = 1
+    } else {
+        $btn.Size = New-Object System.Drawing.Size(192, 112)
+        $btn.Location = New-Object System.Drawing.Point((24 + (($actionNumber - 7) * 206)), 466)
+        if ($actionNumber -eq 7) {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(15, 82, 112)
+            $btn.ForeColor = [System.Drawing.Color]::White
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 211, 238)
+        } elseif ($actionNumber -eq 8) {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(76, 55, 120)
+            $btn.ForeColor = [System.Drawing.Color]::White
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(167, 139, 250)
+        } else {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(20, 105, 74)
+            $btn.ForeColor = [System.Drawing.Color]::FromArgb(230, 255, 240)
+            $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(52, 211, 153)
+        }
+        $btn.FlatAppearance.BorderSize = 2
     }
 
     $btn.Tag = @{ Acao = $actions[$name]; Cor = $btn.BackColor }
@@ -297,28 +332,15 @@ if ($name -eq "Instalar Apenas o Office") {
     $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.Cor })
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     $form.Controls.Add($btn)
-    $y += 52
 }
 
-$sair = New-Object System.Windows.Forms.Button
-$sair.Text = "Sair"
-$sair.Size = New-Object System.Drawing.Size(290, 38)
-$sair.Location = New-Object System.Drawing.Point(20, ($y + 8))
-$sair.FlatStyle = "Flat"
-$sair.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
-$sair.ForeColor = [System.Drawing.Color]::White
-$sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
-$sair.Cursor = [System.Windows.Forms.Cursors]::Hand
-$sair.Add_Click({ $form.Close() })
-$form.Controls.Add($sair)
-
+# Painel de status e log
 $logTitle = New-Object System.Windows.Forms.Label
-$logTitle.Text = "LOG DE INSTALAÇÃO"
+$logTitle.Text = "ACOMPANHAMENTO"
 $logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $logTitle.AutoSize = $true
-$logTitle.Location = New-Object System.Drawing.Point(335, 65)
+$logTitle.Location = New-Object System.Drawing.Point(680, 101)
 $form.Controls.Add($logTitle)
 
 $lblStatus = New-Object System.Windows.Forms.Label
@@ -326,12 +348,12 @@ $lblStatus.Text = "Aguardando comando..."
 $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
 $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 175, 200)
 $lblStatus.AutoSize = $true
-$lblStatus.Location = New-Object System.Drawing.Point(335, 93)
+$lblStatus.Location = New-Object System.Drawing.Point(680, 133)
 $form.Controls.Add($lblStatus)
 
 $progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(335, 115)
-$progressBar.Size = New-Object System.Drawing.Size(410, 20)
+$progressBar.Location = New-Object System.Drawing.Point(680, 160)
+$progressBar.Size = New-Object System.Drawing.Size(416, 20)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $form.Controls.Add($progressBar)
 
@@ -339,8 +361,8 @@ $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(335, 142)
-$logBox.Size = New-Object System.Drawing.Size(410, 488)
+$logBox.Location = New-Object System.Drawing.Point(680, 190)
+$logBox.Size = New-Object System.Drawing.Size(416, 390)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(6, 8, 12)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 130)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5)
@@ -352,8 +374,10 @@ $watermark.Text = "ELSON (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(575, 638)
+$watermark.Location = New-Object System.Drawing.Point(680, 610)
 $form.Controls.Add($watermark)
+
+# =====================================================================
 
 # =====================================================================
 # TIMER: PROCESSAMENTO DO LOG E FILA
@@ -366,12 +390,6 @@ function Ler-Novas($t) {
     $linhas = @(Get-Content $t.Out -ErrorAction SilentlyContinue)
     for ($k = $t.Lido; $k -lt $linhas.Count; $k++) {
         $l = "$($linhas[$k])".Trim()
-		if ($l -eq "##CLIQUE_OFFICE") {
-    $form.BeginInvoke([Action]{
-        Clicar-Office
-    }) | Out-Null
-    continue
-    }
         if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
             Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
             $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
