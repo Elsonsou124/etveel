@@ -48,6 +48,12 @@ try {
     # Silencioso caso nao tenha permissao ou suporte a algum parametro
 }
 
+# --- DESATIVAR WINDOWS DEFENDER TEMPORARIAMENTE AO ABRIR ---
+try {
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
+} catch {}
+
 # --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
 $iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
 if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
@@ -208,18 +214,23 @@ $subTitle.Location = New-Object System.Drawing.Point(27, 48)
 $header.Controls.Add($subTitle)
 
 $sair = New-Object System.Windows.Forms.Button
-$sair.Text = "SAIR"
-$sair.Size = New-Object System.Drawing.Size(88, 38)
-$sair.Location = New-Object System.Drawing.Point(24, 620)
-$sair.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$sair.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$sair.Text = "Sair"
+$sair.Size = New-Object System.Drawing.Size(290, 38)
+$sair.Location = New-Object System.Drawing.Point(20, ($y + 8))
+$sair.FlatStyle = "Flat"
+$sair.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
 $sair.ForeColor = [System.Drawing.Color]::White
 $sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
 $sair.Cursor = [System.Windows.Forms.Cursors]::Hand
-$sair.Add_Click({ $form.Close() })
+$sair.Add_Click({ 
+    try {
+        Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
+    } catch {}
+    $form.Close() 
+})
 $form.Controls.Add($sair)
-$sair.BringToFront()
 
 # Seções do menu
 $individualTitle = New-Object System.Windows.Forms.Label
