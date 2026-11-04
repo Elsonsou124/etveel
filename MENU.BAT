@@ -28,20 +28,62 @@ Add-Type -AssemblyName System.Drawing
 # Unidade de onde o BAT foi aberto e caminho-base configurado para arquivos da rotina.
 $drive     = $env:BATDRIVE
 $BASE      = "$drive\Windows\Tudo"
+$KEY       = "$BASE\rarreg.key"
+$WINRARDIR = "C:\Program Files\WinRAR"
 # =====================================================================
 # TWEAKS DO SISTEMA (Executados invisivelmente ao abrir o BAT)
 # =====================================================================
 
-# --- DESATIVAR TODAS AS OPCOES DO WINDOWS DEFENDER AO ABRIR ---
-try {
-    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-    Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
-    Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
-    Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
-    Set-MpPreference -DisableScriptScanning $true -ErrorAction SilentlyContinue
-    Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction SilentlyContinue
-    Set-MpPreference -MAPSReporting 0 -ErrorAction SilentlyContinue
-} catch {}
+# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
+
+if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
+    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
+    $txtPath = "$WINRARDIR\rarreg.txt"
+    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
+    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
+}
+# --------------------------------------------
+# --- WinRAR: nao gerar chave ficticia; usar licenca valida se disponivel. ---
+
+$global:tasks = New-Object System.Collections.ArrayList
+$global:totalEtapas = 0
+$global:etapaAtual = 0
+
+function Log($msg) { $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") }
+
+function Start-Task($titulo, $script, $total = 1) {
+    $out = Join-Path $env:TEMP ("inst_" + ($titulo -replace '[^a-zA-Z0-9]','') + ".txt")
+    $script = "& { " + $script + " } *> '$out'; exit `$LASTEXITCODE"
+    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc" -WindowStyle Hidden -PassThru
+    [void]$global:tasks.Add(@{ Nome = $titulo; Proc = $p; Out = $out })
+    
+    $global:totalEtapas = $total
+    $global:etapaAtual = 0
+
+    if ($total -gt 1) {
+        $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
+        $progressBar.Minimum = 0
+        $progressBar.Maximum = $total
+        $progressBar.Value = 0
+        $lblStatus.Text = "Instalando lote: $titulo (0/$total)..."
+        $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 180)
+    } else {
+        $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+        $progressBar.MarqueeAnimationSpeed = 30
+        
+        $qtdFila = $global:tasks.Count
+        if ($qtdFila -gt 1) {
+            $lblStatus.Text = "Instalando: $titulo (Fila: $qtdFila tarefas)..."
+        } else {
+            $lblStatus.Text = "Instalando: $titulo..."
+        }
+        $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 230, 255)
+    }
+    
+    Log "Iniciando $titulo..."
+}
+
 
 # CONFIGURAÇÃO DE ENERGIA: define tela e suspensão como "nunca" na tomada e na bateria.
 # Também desativa completamente a hibernação; essas alterações não são restauradas ao sair.
@@ -427,8 +469,14 @@ $header.Controls.Add($subTitle)
 # Esse código não roda ao fechar a janela pelo X.
 $sair = New-Object System.Windows.Forms.Button
 $sair.Text = "Sair"
-$sair.Size = New-Object System.Drawing.Size(290, 38)
-$sair.Location = New-Object System.Drawing.Point(20, ($y + 8))
+$sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
+$sair.Location = New-Object System.Drawing.Point(20, ($form.ClientSize.Height - $sair.Height - 40))
+$sair.Size = New-Object System.Drawing.Size(150, 50)
+
+# ... mantenha aqui as outras configurações e o evento Add_Click ...
+
+$form.Controls.Add($sair)
+$sair.BringToFront()
 $sair.FlatStyle = "Flat"
 $sair.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
@@ -442,7 +490,6 @@ $sair.Add_Click({
     } catch {}
     $form.Close() 
 })
-$form.Controls.Add($sair)
 
 # Seções do menu
 $individualTitle = New-Object System.Windows.Forms.Label
