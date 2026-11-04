@@ -19,8 +19,6 @@ Add-Type -AssemblyName System.Drawing
 # =====================================================================
 $drive     = $env:BATDRIVE
 $BASE      = "$drive\Windows\Tudo"
-$WINRARDIR = "C:\Program Files\WinRAR"
-
 # =====================================================================
 # TWEAKS DO SISTEMA (Executados invisivelmente ao abrir o BAT)
 # =====================================================================
@@ -54,6 +52,8 @@ try {
     Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
 } catch {}
 
+# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---i
+
 # --- ATIVAR ICONES DA AREA DE TRABALHO (Meu Computador, Usuario e Painel de Controle) ---
 $iconsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
 if (-not (Test-Path $iconsPath)) { New-Item -Path $iconsPath -Force | Out-Null }
@@ -68,14 +68,6 @@ foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
     New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
 }
 
-# --- GERADOR AUTOMATICO DO ARQUIVO RARREG ---
-if (-not (Test-Path "$WINRARDIR\rarreg.key")) {
-    if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }
-    $txtPath = "$WINRARDIR\rarreg.txt"
-    Set-Content -Path $txtPath -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force
-    Rename-Item -Path $txtPath -NewName "rarreg.key" -Force
-}
-
 # --- FORCA A ATUALIZACAO DA AREA DE TRABALHO (PISCA/REFRESH) ---
 $refreshCode = @'
 [System.Runtime.InteropServices.DllImport("Shell32.dll")]
@@ -88,9 +80,6 @@ Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -Err
 # =====================================================================
 # VARIAVEIS DE EXECUCAO SILENCIOSA (Para os lotes de instalacao)
 # =====================================================================
-
-# --- GERADOR DE LICENCA WINRAR ---
-$rarKey = '$WINRARDIR = "C:\Program Files\WinRAR"; if (-not (Test-Path "$WINRARDIR\rarreg.key")) { if (-not (Test-Path $WINRARDIR)) { New-Item -ItemType Directory -Force -Path $WINRARDIR | Out-Null }; Set-Content -Path "$WINRARDIR\rarreg.key" -Value "RAR registration data`r`nchattchitto.com`r`nUnlimited Company License`r`nUID=45cf7e253572312b6995`r`n64122122506995900ddabb88b22559b8f25d88e1168dd8cea3bd59`r`nfe190143727199246a8460fce6cb5ffde62890079861be57638717`r`n7131ced835ed65cc743d9777f2ea71a8e32c7e593cf66794343565`r`nb41bcf56929486b8bcdac33d50ecf7739960e36503ffdcbcf7dbfc`r`n378eb1e8a5d96ddf9e5c7d6e7b122c103ee81bce156ee5ec1cf50d`r`n174c5a231523f967f5c53a4efdc7ecb9689f18a2ed6166f7608276`r`n7f5dd734a2736b2d5fb6eb5145b50ed0c7033251fe142027056408" -Force; Write-Host "##INFO Licenca do WinRAR gerada automaticamente" }'
 
 # --- COPIADOR DE ATALHOS DO OFFICE ---
 $officeShortcuts = '$achou = $false; $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"; $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"); foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) { foreach ($dir in $pastas) { if (Test-Path $dir) { $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }; foreach ($arq in $arquivos) { if (-not $achou) { if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }; $achou = $true }; Copy-Item -Path $arq.FullName -Destination $desk -Force } } } }; if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" } else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }'
@@ -175,9 +164,95 @@ $global:etapaAtual = 0
 
 function Log($msg) { $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") }
 
+$appInstallHelpers = @'
+$ProgressPreference = 'SilentlyContinue'
+function Get-VerifiedInstaller {
+    param([string]$Uri, [string]$FileName, [string]$PublisherPattern)
+    $path = Join-Path $env:TEMP $FileName
+    Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -ErrorAction Stop
+    $signature = Get-AuthenticodeSignature -FilePath $path
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch $PublisherPattern) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        throw "Assinatura digital invalida ou publicador inesperado: $Uri"
+    }
+    return $path
+}
+function Install-AppFallback {
+    param([string]$Id)
+    $global:LASTEXITCODE = 1
+    $wingetCode = 1
+    $wingetPath = $null
+    try {
+        $wingetCommand = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($wingetCommand) { $wingetPath = $wingetCommand.Source }
+        if (-not $wingetPath) {
+            try {
+                $appInstaller = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+                if ($appInstaller) {
+                    $candidate = Join-Path $appInstaller.InstallLocation 'winget.exe'
+                    if (Test-Path $candidate) { $wingetPath = $candidate }
+                }
+            } catch {}
+        }
+        if ($wingetPath) {
+            Write-Host "##INFO Tentando instalar $Id pelo WinGet..."
+            & $wingetPath install --exact --id $Id --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+            $wingetCode = [int]$LASTEXITCODE
+            if ($wingetCode -eq 0 -or $wingetCode -eq -1978335189) {
+                $global:LASTEXITCODE = $wingetCode
+                return
+            }
+            Write-Host "##INFO WinGet falhou (codigo $wingetCode). Tentando o canal oficial alternativo..."
+        } else {
+            Write-Host '##INFO WinGet nao foi encontrado. Tentando o canal oficial alternativo...'
+        }
+        switch ($Id) {
+            'Google.Chrome' {
+                $fileName = 'ChromeEnterprise_' + [guid]::NewGuid().ToString('N') + '.msi'
+                $setup = Get-VerifiedInstaller -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi' -FileName $fileName -PublisherPattern '(?i)(CN=Google LLC|O=Google LLC)'
+                $proc = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList "/i `"$setup`" /qn /norestart" -Wait -PassThru
+                if ([int]$proc.ExitCode -eq 3010) { Write-Host '##INFO Chrome instalado; o Windows sinalizou que uma reinicializacao pode ser necessaria.'; $global:LASTEXITCODE = 0 }
+                else { $global:LASTEXITCODE = [int]$proc.ExitCode }
+                return
+            }
+            'RARLab.WinRAR' {
+                $page = Invoke-WebRequest -Uri 'https://www.rarlab.com/download.htm' -UseBasicParsing -ErrorAction Stop
+                $fileMatch = [regex]::Match([string]$page.Content, '(?i)winrar-x64-\d+\.exe')
+                if (-not $fileMatch.Success) { throw 'Nao encontrei o instalador x64 estavel na pagina oficial do WinRAR.' }
+                $uri = 'https://www.rarlab.com/rar/' + $fileMatch.Value
+                $fileName = 'WinRAR_' + [guid]::NewGuid().ToString('N') + '.exe'
+                $setup = Get-VerifiedInstaller -Uri $uri -FileName $fileName -PublisherPattern '(?i)(CN=win\.rar GmbH|O=win\.rar GmbH)'
+                $proc = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+                $global:LASTEXITCODE = [int]$proc.ExitCode
+                return
+            }
+            'Adobe.Acrobat.Reader.64-bit' {
+                Start-Process 'https://get.adobe.com/reader/enterprise/'
+                Write-Host '##INFO Abri o download oficial do Adobe Reader. Conclua a instalacao na pagina da Adobe.'
+                $global:LASTEXITCODE = if ($wingetCode -ne 0) { $wingetCode } else { 1 }
+                return
+            }
+            'Guru3D.Afterburner' {
+                Start-Process 'https://www.msi.com/Landing/afterburner/download'
+                Write-Host '##INFO Abri a pagina oficial do MSI Afterburner. Escolha o instalador no site da MSI.'
+                $global:LASTEXITCODE = if ($wingetCode -ne 0) { $wingetCode } else { 1 }
+                return
+            }
+            default {
+                Write-Host "##INFO Nao existe fallback configurado para $Id."
+                $global:LASTEXITCODE = 1
+                return
+            }
+        }
+    } catch {
+        Write-Host "##INFO A alternativa oficial falhou: $_"
+        $global:LASTEXITCODE = 1
+    }
+}
+'@
 function Start-Task($titulo, $script, $total = 1) {
     $out = Join-Path $env:TEMP ("inst_" + ($titulo -replace '[^a-zA-Z0-9]','') + ".txt")
-    $script = "& { " + $script + " } *> '$out'; exit `$LASTEXITCODE"
+    $script = "& { " + $appInstallHelpers + "`r`n" + $script + " } *> '$out'; exit `$LASTEXITCODE"
     $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
     if (Test-Path $out) { Remove-Item $out -Force -ErrorAction SilentlyContinue }
     $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -STA -EncodedCommand $enc" -WindowStyle Hidden -PassThru
@@ -209,7 +284,7 @@ function Start-Task($titulo, $script, $total = 1) {
     Log "=== Iniciando: $titulo ==="
 }
 
-function W($id) { "winget install -e --id $id --source winget --accept-package-agreements --accept-source-agreements" }
+function W($id) { "Install-AppFallback -Id '$id'" }
 
 function Passo($n, $tot, $nome, $cmd) {
     "Write-Host '##AGORA [$n/$tot] $nome'; `$global:LASTEXITCODE = 0; $cmd; `$c = `$global:LASTEXITCODE; " +
@@ -325,11 +400,12 @@ $form.Controls.Add($bundleTitle)
 
 $actions = [ordered]@{
     "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
-    "Instalar Google Chrome"        = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
-    "Instalar WinRAR"               = { Start-Task "WinRAR" (Lote @((Passo 1 1 "WinRAR" (W "RARLab.WinRAR")), $rarKey)) }
-    "Instalar MSI Afterburner"      = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
-    
-    "Instalar Apenas o Office"      = {
+    "Instalar Google Chrome"     = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
+    "Instalar WinRAR"            = { Start-Task "WinRAR" (Lote @(Passo 1 1 "WinRAR" (W "RARLab.WinRAR"))) }
+    "Instalar MSI Afterburner"   = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
+    "Instalar Adobe Reader"     = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
+
+    "Instalar Apenas o Office"  = {
         $exe = Preparar-Office
         if ($exe) {
             Log "Instalador do Office iniciado. Ele sera fechado automaticamente ao concluir."
@@ -338,31 +414,29 @@ $actions = [ordered]@{
             Start-Task "Office e atalhos" $scriptOffice
         }
     }
-    
-    "Copiar Atalhos do Office"      = { Start-Task "Copiando Atalhos" (Lote @($officeShortcuts)) }
-    
-    "TUDO (Sem MSI e sem Office)"   = {
+
+    "TUDO (Sem MSI e sem Office)" = {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
             (Passo 2 3 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
-            (Passo 3 3 "WinRAR" (W "RARLab.WinRAR")), $rarKey
-        ))
+            (Passo 3 3 "WinRAR" (W "RARLab.WinRAR"))
+        )) -total 3
     }
-    
-    "INSTALAR TUDO (Sem MSI)"       = {
+
+    "INSTALAR TUDO (Sem MSI)" = {
         Start-Task "INSTALAR TUDO (Sem MSI)" (Lote @(
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
             (Passo 2 4 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
-            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
+            (Passo 3 4 "WinRAR" (W "RARLab.WinRAR")),
             (Passo 4 4 "Office" $officeInstallAndShortcuts)
         )) -total 4
     }
-    
-    "INSTALAR TUDO + Office"        = {
+
+    "INSTALAR TUDO + Office" = {
         Start-Task "TUDO com Office" (Lote @(
             (Passo 1 5 "Chrome" (W "Google.Chrome")),
             (Passo 2 5 "Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit")),
-            (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")), $rarKey,
+            (Passo 3 5 "WinRAR" (W "RARLab.WinRAR")),
             (Passo 4 5 "MSI Afterburner" (W "Guru3D.Afterburner")),
             (Passo 5 5 "Office" $officeInstallAndShortcuts)
         )) -total 5
