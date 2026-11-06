@@ -757,7 +757,7 @@ $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $form.Controls.Add($logBox)
 
 $watermark = New-Object System.Windows.Forms.Label
-$watermark.Text = "ELSON (Criatividade E Tudo)0.26"
+$watermark.Text = "ELSON (Criatividade E Tudo) Versão  0.26"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $watermark.AutoSize = $true
