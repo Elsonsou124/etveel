@@ -1,3 +1,47 @@
+@echo off
+:: ===================================================================
+:: PARTE 1: O LANÇADOR BATCH (Topo do Arquivo)
+:: ===================================================================
+REM Verifica se tem permissão de Administrador e eleva se necessário.
+net session >nul 2>&1
+if errorlevel 1 (
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
+set "BATDRIVE=%~d0"
+set "INSTALLER_FILE=%~f0"
+
+REM Aciona o motor PowerShell embutido no próprio arquivo de forma oculta
+powershell -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -Command "$s=[IO.File]::ReadAllText($env:INSTALLER_FILE); $a=$s.IndexOf('#'+'PSSTART'); $b=$s.IndexOf('#'+'PSEND'); try { iex $s.Substring($a, $b-$a) } catch { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Erro no menu: $_\") }"
+exit /b
+
+#PSSTART
+# ===================================================================
+# PARTE 2: O BLOCO POWERSHELL (Meio do Arquivo)
+# ===================================================================
+# Aqui fica todo o código da Interface Gráfica (Windows Forms), 
+# os tweaks do sistema (Defender, Energia, Atalhos), as funções do 
+# WinGet e os fallbacks oficiais (Chrome, WinRAR, etc.).
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+# [ Todo o restante do código do menu, botões, timer e logs fica aqui... ]
+
+# Fim da interface gráfica
+$form.Show()
+[System.Windows.Forms.Application]::Run($form)
+$timer.Stop()
+$timer.Dispose()
+$form.Dispose()
+
+#PSEND
+# ===================================================================
+# PARTE 3: A PAYLOAD / INSTALADOR EMBUTIDO (Fim do Arquivo)
+# ===================================================================
+###PAYLOAD###
 TVqQAAMAAAAEAAAA//8AALgAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAMAEAAA4fug4AtAnNIbgBTM0hVGhpcyBwcm9ncmFtIGNhbm5vdCBiZSBydW4gaW4gRE9TIG1v
 ZGUuDQ0KJAAAAAAAAADm05nJorL3mqKy95qisvea2zP0m7Wy95rbM/KbZrL3muk485u2svea6Tj0
