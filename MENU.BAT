@@ -70,7 +70,16 @@ try {
     # Silencioso caso nao tenha permissao ou suporte a algum parametro
 }
 
-# A protecao do Windows permanece ativa.
+# --- DESATIVAR TODAS AS PROTECOES E TEMPO REAL AO ABRIR ---
+try {
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
+    Set-MpPreference -DisableScriptScanning $true -ErrorAction SilentlyContinue
+    Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction SilentlyContinue
+    Set-MpPreference -MAPSReporting 0 -ErrorAction SilentlyContinue
+} catch {}
 
 # Ajusta valores do Registro do usuário atual para exibir ícones clássicos na Área de Trabalho.
 # Os identificadores abaixo correspondem a Este Computador, Pasta do Usuário e Painel de Controle.
@@ -390,6 +399,142 @@ function Install-AdobeReaderDirect {
         $global:LASTEXITCODE = 1
     } finally { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue }
 }
+function Get-PackageVerifiedDownload {
+    param([string]$Uri, [string]$Name, [string]$Extension, [string]$Sha256)
+    $parsed = [uri]$Uri
+    if ($parsed.Scheme -ne 'https' -or $parsed.Host -notin @('www.rarlab.com','rarlab.com','ftp.nluug.nl','download.msi.com','download-2.msi.com')) {
+        throw 'Link fora das fontes permitidas para WinRAR e Afterburner.'
+    }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $path = Join-Path $env:TEMP ('Setup_' + [guid]::NewGuid().ToString('N') + '.' + $Extension)
+    foreach ($method in @('PowerShell','BITS','curl')) {
+        try {
+            Write-Host ("##INFO ${Name}: baixando por " + $method + '...')
+            switch ($method) {
+                'PowerShell' {
+                    Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -TimeoutSec 900 -ErrorAction Stop
+                }
+                'BITS' {
+                    Import-Module BitsTransfer -ErrorAction Stop
+                    $job = $null
+                    try {
+                        $job = Start-BitsTransfer -Source $Uri -Destination $path -Asynchronous -ErrorAction Stop
+                        $deadline = (Get-Date).AddMinutes(15)
+                        while ($true) {
+                            $job = Get-BitsTransfer -Id $job.Id -ErrorAction Stop
+                            if ($job.JobState -eq 'Transferred') { Complete-BitsTransfer -BitsJob $job -ErrorAction Stop; $job = $null; break }
+                            if ($job.JobState -in @('Error','Cancelled','Suspended') -or (Get-Date) -gt $deadline) {
+                                throw ('Download BITS interrompido: ' + $job.JobState)
+                            }
+                            Start-Sleep -Seconds 2
+                        }
+                    } finally {
+                        if ($job) { Remove-BitsTransfer -BitsJob $job -ErrorAction SilentlyContinue }
+                    }
+                }
+                'curl' {
+                    $curl = Get-Command curl.exe -ErrorAction Stop
+                    & $curl.Source --fail --location --silent --show-error --connect-timeout 30 --max-time 900 --retry 2 --output $path $Uri
+                    if ($LASTEXITCODE -ne 0) { throw ("curl falhou, codigo " + $LASTEXITCODE) }
+                }
+            }
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) {
+                throw 'Arquivo incompleto ou pagina web recebida no lugar do instalador.'
+            }
+            Write-Host ("##INFO ${Name}: conferindo integridade do download...")
+            if ($Sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $Sha256) {
+                throw 'Arquivo diferente do catalogo Microsoft; download bloqueado.'
+            }
+            return $path
+        } catch {
+            Write-Host ("##INFO ${Name}: " + $method + " falhou: " + $_.Exception.Message)
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+    throw 'Nenhum dos tres metodos conseguiu baixar um instalador valido.'
+}
+function Test-MenuPackageInstalled {
+    param([string]$Id)
+    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ }
+    $relative = if ($Id -eq 'RARLab.WinRAR') { 'WinRAR\WinRAR.exe' } else { 'MSI Afterburner\MSIAfterburner.exe' }
+    foreach ($root in $roots) { if (Test-Path -LiteralPath (Join-Path $root $relative)) { return $true } }
+    return $false
+}
+function Get-MenuPackageMetadata {
+    param([string]$Id)
+    if ($Id -eq 'RARLab.WinRAR') {
+        $repo = 'r/RARLab/WinRAR'
+        $reserve = @{ Name='WinRAR'; Url='https://www.rarlab.com/rar/winrar-x64-723br.exe'; Hash='6EBE807D40F179C12B40CDE6A9DAEF03E7CDB06B904B6732ADE9CEC9E6D4D56B'; Extension='exe'; Nested=''; Args='-s1'; Manual='https://www.rarlab.com/download.htm' }
+    } else {
+        $repo = 'g/Guru3D/Afterburner'
+        $reserve = @{ Name='MSI Afterburner'; Url='https://ftp.nluug.nl/pub/games/PC/guru3d/afterburner/%5BGuru3D%5D-MSIAfterburnerSetup466Build16757.zip'; Hash='348E9690A638D84E30E32E9C7C2DD7AAD9FD82D71ECED1942C04C4C5620B0E1E'; Extension='zip'; Nested='MSIAfterburnerSetup466.exe'; Args='/S'; Manual='https://www.msi.com/Landing/afterburner/graphics-cards' }
+    }
+    try {
+        Write-Host ("##INFO " + $reserve.Name + ': procurando a versao estavel no catalogo Microsoft...')
+        $headers = @{ 'User-Agent'='Windows-Installer-Menu'; 'Accept'='application/vnd.github+json' }
+        $listing = Invoke-RestMethod -Uri ('https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/' + $repo) -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+        $versions = @($listing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+\.\d+\.\d+(\.\d+)?$' } | Sort-Object { [version]$_.name } -Descending | Select-Object -First 3)
+        foreach ($version in $versions) {
+            try {
+                $manifest = Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/' + $repo + '/' + $version.name + '/' + $Id + '.installer.yaml') -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+                $text = [string]$manifest.Content
+                if ($Id -eq 'RARLab.WinRAR') {
+                    $m = [regex]::Match($text, '(?ms)^- InstallerLocale: pt-BR\s+Architecture: x64\s+InstallerUrl: (https://www\.rarlab\.com/rar/winrar-x64-\d+br\.exe)\s+InstallerSha256: ([A-Fa-f0-9]{64})')
+                    if (-not $m.Success) { $m = [regex]::Match($text, '(?ms)^- InstallerLocale: en\s+Architecture: x64\s+InstallerUrl: (https://www\.rarlab\.com/rar/winrar-x64-\d+\.exe)\s+InstallerSha256: ([A-Fa-f0-9]{64})') }
+                } else {
+                    $m = [regex]::Match($text, '(?m)^\s*InstallerUrl: (https://ftp\.nluug\.nl/pub/games/PC/guru3d/afterburner/[^\r\n]+\.zip)\s+InstallerSha256: ([A-Fa-f0-9]{64})')
+                    $nested = [regex]::Match($text, '(?m)^- RelativeFilePath: (MSIAfterburnerSetup\d+\.exe)\s*$')
+                    if (-not $nested.Success) { continue }
+                }
+                if ($m.Success) {
+                    $reserve.Url=$m.Groups[1].Value; $reserve.Hash=$m.Groups[2].Value
+                    if ($Id -eq 'Guru3D.Afterburner') { $reserve.Nested=$nested.Groups[1].Value }
+                    break
+                }
+            } catch { Write-Host '##INFO Catalogo indisponivel; tentando alternativa...' }
+        }
+    } catch { Write-Host '##INFO Usando link de reserva com integridade conferida.' }
+    return $reserve
+}
+function Install-MenuPackageDirect {
+    param([string]$Id)
+    $global:LASTEXITCODE=1
+    if (Test-MenuPackageInstalled -Id $Id) { $global:LASTEXITCODE=-1978335189; Write-Host '##INFO Programa ja encontrado neste computador.'; return }
+    if ($Id -eq 'RARLab.WinRAR' -and -not [Environment]::Is64BitOperatingSystem) { Write-Host '##INFO Este pacote WinRAR exige Windows de 64 bits.'; return }
+    $meta=Get-MenuPackageMetadata -Id $Id
+    $download=$null; $folder=$null
+    try {
+        try { $download=Get-PackageVerifiedDownload -Uri $meta.Url -Name $meta.Name -Extension $meta.Extension -Sha256 $meta.Hash }
+        catch {
+            Write-Host ("##INFO " + $meta.Name + ': downloads automaticos falharam. Abrindo pagina para instalacao manual.')
+            Start-Process $meta.Manual -ErrorAction Stop
+            return
+        }
+        $setup=$download
+        if ($meta.Extension -eq 'zip') {
+            Write-Host '##INFO MSI Afterburner: extraindo o instalador verificado...'
+            $folder=Join-Path $env:TEMP ('Afterburner_' + [guid]::NewGuid().ToString('N'))
+            Expand-Archive -LiteralPath $download -DestinationPath $folder -Force -ErrorAction Stop
+            $setup=Join-Path $folder $meta.Nested
+            if (-not (Test-Path -LiteralPath $setup)) { throw 'Instalador do Afterburner nao encontrado no ZIP.' }
+        }
+        Write-Host ("##INFO " + $meta.Name + ': instalando; aguarde...')
+        $proc=Start-Process -FilePath $setup -ArgumentList $meta.Args -Wait -PassThru -ErrorAction Stop
+        $code=[int]$proc.ExitCode
+        if ($code -in @(0,3010,1641)) {
+            if (Test-MenuPackageInstalled -Id $Id) { $global:LASTEXITCODE=0 }
+            else { Write-Host '##INFO Instalador encerrou, mas o programa nao foi encontrado. Confira a instalacao.'; $global:LASTEXITCODE=1 }
+            if ($code -ne 0) { Write-Host '##INFO Pode ser necessario reiniciar o Windows.' }
+        } else {
+            $global:LASTEXITCODE=$code
+            Write-Host ("##INFO " + $meta.Name + ': instalador retornou erro ' + $code + '.')
+        }
+    } catch { Write-Host ('##INFO Falha na instalacao: ' + $_.Exception.Message); $global:LASTEXITCODE=1 }
+    finally {
+        if ($download) { Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue }
+        if ($folder) { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
 # Estratégia: tentar WinGet primeiro; se falhar, usar uma alternativa oficial específica para aquele aplicativo.
 # O código de saída é mantido para o menu não registrar falsamente uma instalação como bem-sucedida.
 function Install-AppFallback {
@@ -397,6 +542,9 @@ function Install-AppFallback {
     $global:LASTEXITCODE = 1
     $wingetCode = 1
     $wingetPath = $null
+    if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner') -and (Test-MenuPackageInstalled -Id $Id)) {
+        $global:LASTEXITCODE=-1978335189; Write-Host '##INFO Programa ja encontrado neste computador.'; return
+    }
     if ($Id -eq 'Adobe.Acrobat.Reader.64-bit' -and (Test-AdobeReaderInstalled)) {
         Write-Host '##INFO Adobe Reader ou Acrobat ja encontrado neste computador.'
         $global:LASTEXITCODE = -1978335189
@@ -438,17 +586,8 @@ function Install-AppFallback {
                 else { $global:LASTEXITCODE = [int]$proc.ExitCode }
                 return
             }
-            # WinRAR: procura a versão x64 estável no site RARLAB, valida o certificado e instala em modo silencioso.
-            # Não grava chave de licença; o uso deve respeitar os termos de licença do fornecedor.
             'RARLab.WinRAR' {
-                $page = Invoke-WebRequest -Uri 'https://www.rarlab.com/download.htm' -UseBasicParsing -ErrorAction Stop
-                $fileMatch = [regex]::Match([string]$page.Content, '(?i)winrar-x64-\d+\.exe')
-                if (-not $fileMatch.Success) { throw 'Nao encontrei o instalador x64 estavel na pagina oficial do WinRAR.' }
-                $uri = 'https://www.rarlab.com/rar/' + $fileMatch.Value
-                $fileName = 'WinRAR_' + [guid]::NewGuid().ToString('N') + '.exe'
-                $setup = Get-VerifiedInstaller -Uri $uri -FileName $fileName -PublisherPattern '(?i)(CN=win\.rar GmbH|O=win\.rar GmbH)'
-                $proc = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
-                $global:LASTEXITCODE = [int]$proc.ExitCode
+                Install-MenuPackageDirect -Id $Id
                 return
             }
             # Adobe: download direto com PowerShell, BITS e curl; dois servidores oficiais.
@@ -456,11 +595,8 @@ function Install-AppFallback {
                 Install-AdobeReaderDirect
                 return
             }
-            # MSI Afterburner: se WinGet falhar, abre a página oficial da MSI para escolher o instalador.
             'Guru3D.Afterburner' {
-                Start-Process 'https://www.msi.com/Landing/afterburner/download'
-                Write-Host '##INFO Abri a pagina oficial do MSI Afterburner. Escolha o instalador no site da MSI.'
-                $global:LASTEXITCODE = if ($wingetCode -ne 0) { $wingetCode } else { 1 }
+                Install-MenuPackageDirect -Id $Id
                 return
             }
             default {
@@ -473,6 +609,11 @@ function Install-AppFallback {
         if ($Id -eq 'Adobe.Acrobat.Reader.64-bit') {
             Write-Host ('##INFO Adobe: tentativa inicial falhou: ' + $_.Exception.Message)
             Install-AdobeReaderDirect
+            return
+        }
+        if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner')) {
+            Write-Host ('##INFO Tentativa inicial falhou: ' + $_.Exception.Message)
+            Install-MenuPackageDirect -Id $Id
             return
         }
         Write-Host "##INFO A alternativa oficial falhou: $_"
@@ -582,15 +723,12 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(27, 48)
 $header.Controls.Add($subTitle)
 
-# O botao Sair fecha a janela; a protecao do Windows nao e alterada.
+# O botao Sair fecha a janela e religa o Windows Defender
 $sair = New-Object System.Windows.Forms.Button
 $sair.Text = "Sair"
 $sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
 $sair.Location = New-Object System.Drawing.Point(20, ($form.ClientSize.Height - $sair.Height - 40))
 $sair.Size = New-Object System.Drawing.Size(150, 50)
-
-# ... mantenha aqui as outras configurações e o evento Add_Click ...
-
 $form.Controls.Add($sair)
 $sair.BringToFront()
 $sair.FlatStyle = "Flat"
@@ -599,7 +737,18 @@ $sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
 $sair.ForeColor = [System.Drawing.Color]::White
 $sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
 $sair.Cursor = [System.Windows.Forms.Cursors]::Hand
-$sair.Add_Click({ $form.Close() })
+$sair.Add_Click({ 
+    try {
+        Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableIOAVProtection $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableScriptScanning $false -ErrorAction SilentlyContinue
+        Set-MpPreference -SubmitSamplesConsent 0 -ErrorAction SilentlyContinue
+        Set-MpPreference -MAPSReporting 1 -ErrorAction SilentlyContinue
+    } catch {}
+    $form.Close() 
+})
 
 # Seções do menu
 $individualTitle = New-Object System.Windows.Forms.Label
@@ -611,7 +760,7 @@ $individualTitle.Location = New-Object System.Drawing.Point(24, 101)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
-$bundleTitle.Text = "PACOTES DE INSTALAÇÃO  |  07-09"
+$bundleTitle.Text = "PACOTES DE INSTALAÇÃO  |  07-10"
 $bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $bundleTitle.AutoSize = $true
@@ -622,25 +771,17 @@ $form.Controls.Add($bundleTitle)
 # LISTA DE ACOES DOS BOTOES
 # =====================================================================
 
-# A ordem desta lista determina a numeração e a posição dos botões.
-# As seis primeiras entradas são ações individuais; as três últimas são pacotes de instalação.
 $actions = [ordered]@{
      "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
-    # Instalação individual: tenta WinGet e depois MSI oficial do Google se necessário.
     "Instalar Google Chrome"     = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
-    # Instalação individual: tenta WinGet e depois o instalador oficial do RARLAB.
     "Instalar WinRAR"            = { Start-Task "WinRAR" (Lote @(Passo 1 1 "WinRAR" (W "RARLab.WinRAR"))) }
-    # Instalação individual: tenta WinGet e abre o site oficial da MSI como alternativa.
     "Instalar MSI Afterburner"   = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
-    # Opcao 05: tenta WinGet e depois download direto por tres metodos.
     "Instalar Adobe Reader"     = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
 
-    # Office individual: download em segundo plano, com progresso e resultado no log.
     "Instalar Apenas o Office" = {
         Start-Task "Office e atalhos" (Lote @(Passo 1 1 "Office" $officeInstallAndShortcuts))
     }
 
-    # Pacote 1: Chrome, Adobe Reader e WinRAR; não inclui Afterburner nem Office.
     "TUDO (Sem MSI e sem Office)" = {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
@@ -649,7 +790,6 @@ $actions = [ordered]@{
         )) -total 3
     }
 
-    # Pacote 2: Chrome, Adobe Reader, WinRAR e Office; não inclui Afterburner.
     "INSTALAR TUDO (Sem MSI)" = {
         Start-Task "INSTALAR TUDO (Sem MSI)" (Lote @(
             (Passo 1 4 "Chrome" (W "Google.Chrome")),
@@ -659,7 +799,6 @@ $actions = [ordered]@{
         )) -total 4
     }
 
-    # Pacote 3: Chrome, Adobe Reader, WinRAR, MSI Afterburner e Office.
     "INSTALAR TUDO + Office" = {
         Start-Task "TUDO com Office" (Lote @(
             (Passo 1 5 "Chrome" (W "Google.Chrome")),
@@ -669,10 +808,17 @@ $actions = [ordered]@{
             (Passo 5 5 "Office" $officeInstallAndShortcuts)
         )) -total 5
     }
+
+    "Kit Gamer Completo" = {
+        Start-Task "Kit Gamer Completo" (Lote @(
+            'Write-Host "##AGORA [1/4] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet; Write-Host "##OK .NET Framework 3.5"',
+            'Write-Host "##AGORA [2/4] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --accept-package-agreements --accept-source-agreements; $ok = $true } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait; break } } catch {} } }; Write-Host "##OK .NET Desktop Runtime"',
+            'Write-Host "##AGORA [3/4] Instalando Visual C++ Redistributable..."; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; break } } catch {} }; Write-Host "##OK Visual C++"',
+            'Write-Host "##AGORA [4/4] Instalando DirectX Runtimes..."; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; break } } catch {} }; Write-Host "##OK DirectX"'
+        )) -total 4
+    }
 }
 
-# Ações numeradas em cartões: 01-06 individuais, 07-09 pacotes
-# Cria os botões na ordem acima; o número também define coluna, linha e estilo do cartão.
 $actionNumber = 0
 foreach ($name in $actions.Keys) {
     $actionNumber++
@@ -694,8 +840,9 @@ foreach ($name in $actions.Keys) {
         $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 180, 220)
         $btn.FlatAppearance.BorderSize = 1
     } else {
-        $btn.Size = New-Object System.Drawing.Size(192, 112)
-        $btn.Location = New-Object System.Drawing.Point((24 + (($actionNumber - 7) * 206)), 466)
+        $btn.Size = New-Object System.Drawing.Size(156, 112)
+        $btn.Location = New-Object System.Drawing.Point((24 + (($actionNumber - 7) * 166)), 466)
+        
         if ($actionNumber -eq 7) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(15, 82, 112)
             $btn.ForeColor = [System.Drawing.Color]::White
@@ -704,11 +851,16 @@ foreach ($name in $actions.Keys) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(76, 55, 120)
             $btn.ForeColor = [System.Drawing.Color]::White
             $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(167, 139, 250)
-        } else {
+        } elseif ($actionNumber -eq 9) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(20, 105, 74)
             $btn.ForeColor = [System.Drawing.Color]::FromArgb(230, 255, 240)
             $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
             $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(52, 211, 153)
+        } else {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(120, 30, 30)
+            $btn.ForeColor = [System.Drawing.Color]::FromArgb(255, 230, 230)
+            $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 80, 80)
         }
         $btn.FlatAppearance.BorderSize = 2
     }
@@ -716,7 +868,6 @@ foreach ($name in $actions.Keys) {
     $btn.Tag = @{ Acao = $actions[$name]; Cor = $btn.BackColor }
     $btn.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(40, 55, 80) })
     $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.Cor })
-    # O clique executa o bloco de ação guardado no Tag do botão; exceções são mostradas em uma caixa de mensagem.
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     $form.Controls.Add($btn)
 }
@@ -757,23 +908,16 @@ $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $form.Controls.Add($logBox)
 
 $watermark = New-Object System.Windows.Forms.Label
-$watermark.Text = "ELSON (Criatividade E Tudo) Versão  0.26"
+$watermark.Text = "ELSON (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $watermark.AutoSize = $true
 $watermark.Location = New-Object System.Drawing.Point(680, 610)
 $form.Controls.Add($watermark)
 
-# =====================================================================
-
-# =====================================================================
-# A cada segundo, o timer lê novas mensagens dos workers e remove tarefas que terminaram.
 # TIMER: PROCESSAMENTO DO LOG E FILA
-# =====================================================================
-
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
-# Converte marcadores escritos pelo worker (##AGORA, ##OK, ##JA, ##ERRO, ##INFO) em mensagens da interface.
 function Ler-Novas($t) {
     if (-not (Test-Path $t.Out)) { return }
     $linhas = @(Get-Content $t.Out -ErrorAction SilentlyContinue)
@@ -788,14 +932,12 @@ function Ler-Novas($t) {
         elseif ($l -match '^##JA (.+)$')   { $t.Ja++;   Log ("  [JA]   " + $matches[1] + " ja estava instalado") }
         elseif ($l -match '^##ERRO (.+)$') {
             $t.Erro++; Log ("  [ERRO] " + $matches[1])
-            if ($matches[1] -like '*Afterburner*') { Log "         Baixe manualmente no site da MSI (abrindo...)"; Start-Process "https://www.msi.com/Landing/afterburner/graphics-cards" }
         }
         elseif ($l -match '^##INFO (.+)$') { Log ("         " + $matches[1]) }
     }
     $t.Lido = $linhas.Count
 }
 
-# Em cada ciclo: atualiza o log, verifica se o processo filho terminou e mostra o resumo da tarefa.
 $timer.Add_Tick({
     foreach ($t in @($global:tasks)) {
         Ler-Novas $t
@@ -823,10 +965,23 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
+
+# =====================================================================
+# CONFIGURAÇÃO DE VERSÃO (FÁCIL ALTERAÇÃO AQUI NO FINAL DO CÓDIGO)
+# =====================================================================
+$versaoLabel = New-Object System.Windows.Forms.Label
+$versaoLabel.Text = "VERSÃO 0.27"
+$versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI Black", 14, [System.Drawing.FontStyle]::Bold)
+$versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 220, 0)
+$versaoLabel.AutoSize = $true
+$versaoLabel.Location = New-Object System.Drawing.Point(950, 605)
+$form.Controls.Add($versaoLabel)
+# =====================================================================
+
+
 # Mostra a janela e mantém ativo o loop de eventos do Windows Forms.
 $form.Show()
 [System.Windows.Forms.Application]::Run($form)
-
 
 # Ao fechar o menu, para o timer e libera os recursos gráficos.
 $timer.Stop()
