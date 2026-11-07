@@ -44,7 +44,7 @@ O **Assistente de Formatação Pro** oferece ações individuais e pacotes de in
 
 | Ação / Botão | Descrição |
 | :--- | :--- |
-| **Ativação Windows** | Executa rotina externa obtida de `get.activated.win` (consulte os avisos: não é uma ferramenta oficial da Microsoft). |
+| **Ativação Windows** | Abre diretamente a tela de Configurações de Ativação do Windows no seu sistema. |
 | **Instalar Google Chrome** | Instala o navegador Google Chrome de forma silenciosa via `winget`. |
 | **Instalar WinRAR** | Instala o WinRAR via `winget` e executa a rotina de gravação do arquivo de registro. |
 | **Instalar MSI Afterburner** | Instala o MSI Afterburner; em caso de falha no pacote, abre a página oficial da MSI. |
