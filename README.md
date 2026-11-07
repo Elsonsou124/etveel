@@ -2,7 +2,7 @@
 
 Uma poderosa ferramenta de automação para Windows desenvolvida em **Batch (CMD)** e **PowerShell**, com interface gráfica moderna em **Windows Forms**. O menu reúne instalações de aplicativos e configurações do sistema para otimizar tarefas comuns após uma formatação.
 
-> [!AVISO]
+> [!WARNING]
 > O script solicita privilégios de administrador e altera configurações de segurança e energia do Windows. Leia atentamente a seção [Avisos Importantes](#avisos-importantes) antes de executar. Não rode em um computador de produção sem revisar e testar o código.
 
 ---
