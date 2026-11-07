@@ -233,7 +233,7 @@ function Get-PackageVerifiedDownload {
                     if ($LASTEXITCODE -ne 0) { throw 'curl falhou' }
                 }
             }
-            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -gt 1000000) { throw 'Arquivo incompleto' }
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) { throw 'Arquivo incompleto' }
             if ($Sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $Sha256) {
                 throw 'Hash invalido'
             }
@@ -260,7 +260,7 @@ function Get-MenuPackageMetadata {
         $reserve = @{ Name='WinRAR'; Url='https://www.rarlab.com/rar/winrar-x64-723br.exe'; Hash='6EBE807D40F179C12B40CDE6A9DAEF03E7CDB06B904B6732ADE9CEC9E6D4D56B'; Extension='exe'; Nested=''; Args='-s1'; Manual='https://www.rarlab.com/download.htm' }
     } else {
         $repo = 'g/Guru3D/Afterburner'
-        $reserve = @{ Name='MSI Afterburner'; Url='https://ftp.nluug.nl/pub/games/PC/guru3d/afterburner/[Guru3D.com]-MSIAfterburnerSetup465.zip'; Hash='348E9690A638D84E30E32E9C7C2DD7AAD9FD82D71ECED1942C04C4C5620B0E1E'; Extension='zip'; Nested='MSIAfterburnerSetup466.exe'; Args='/S'; Manual='https://www.msi.com/Landing/afterburner/graphics-cards' }
+        $reserve = @{ Name='MSI Afterburner'; Url='https://ftp.nluug.nl/pub/games/PC/guru3d/afterburner/%5BGuru3D%5D-MSIAfterburnerSetup466Build16757.zip'; Hash='348E9690A638D84E30E32E9C7C2DD7AAD9FD82D71ECED1942C04C4C5620B0E1E'; Extension='zip'; Nested='MSIAfterburnerSetup466.exe'; Args='/S'; Manual='https://www.msi.com/Landing/afterburner/graphics-cards' }
     }
     try {
         $headers = @{ 'User-Agent'='Windows-Installer-Menu'; 'Accept'='application/vnd.github+json' }
@@ -672,11 +672,12 @@ $actions = [ordered]@{
 
     "Kit Gamer" = {
         Start-Task "Kit Gamer" (Lote @(
-            'Write-Host "##AGORA [1/4] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet; Write-Host "##OK .NET Framework 3.5"',
-            'Write-Host "##AGORA [2/4] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --accept-package-agreements --accept-source-agreements; $ok = $true } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait; break } } catch {} } }; Write-Host "##OK .NET Desktop Runtime"',
-            'Write-Host "##AGORA [3/4] Instalando Visual C++ Redistributable..."; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; break } } catch {} }; Write-Host "##OK Visual C++"',
-            'Write-Host "##AGORA [4/4] Instalando DirectX Runtimes..."; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; break } } catch {} }; Write-Host "##OK DirectX"'
-        )) -total 4
+            'Write-Host "##AGORA [1/5] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"',
+            'Write-Host "##AGORA [2/5] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet; Write-Host "##OK .NET Framework 3.5"',
+            'Write-Host "##AGORA [3/5] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --accept-package-agreements --accept-source-agreements; $ok = $true } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait; break } } catch {} } }; Write-Host "##OK .NET Desktop Runtime"',
+            'Write-Host "##AGORA [4/5] Instalando Visual C++ Redistributable..."; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; break } } catch {} }; Write-Host "##OK Visual C++"',
+            'Write-Host "##AGORA [5/5] Instalando DirectX Runtimes..."; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; break } } catch {} }; Write-Host "##OK DirectX"'
+        )) -total 5
     }
 }
 
@@ -834,7 +835,7 @@ $timer.Start()
 # SEÇÃO 9: CONTROLE DE VERSÃO (FÁCIL ALTERAÇÃO NA ÚLTIMA LINHA)
 # =====================================================================
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "VERSÃO 0.28"
+$versaoLabel.Text = "VERSÃO 0.29"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI Black", 14, [System.Drawing.FontStyle]::Bold)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 220, 0)
 $versaoLabel.AutoSize = $true
