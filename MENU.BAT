@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (VISUAL PREMIUM / MODERNO)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (VISUAL PREMIUM + TOOLTIPS)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -693,6 +693,14 @@ $form.MaximizeBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+
+# Componente de Tooltip (Dicas ao passar o mouse)
+$toolTip = New-Object System.Windows.Forms.ToolTip
+$toolTip.AutoPopDelay = 10000
+$toolTip.InitialDelay = 400
+$toolTip.ReshowDelay = 100
+$toolTip.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 52)
+$toolTip.ForeColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 
 # Cabeçalho da Janela
 $header = New-Object System.Windows.Forms.Panel
@@ -823,9 +831,27 @@ $actions = [ordered]@{
     }
 }
 
+# Dicionário de descrições detalhadas para os tooltips dos pacotes
+$packageTooltips = @{
+    "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
+    "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
+    "INSTALAR TUDO + Office"      = "Pacote Completo Avançado:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• MSI Afterburner`n• Microsoft Office (com atalhos)";
+    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA, AMD ou Intel)";
+    "Atualizar Windows"           = "Varre, baixa e instala todas as atualizações de software pendentes do Windows Update.";
+    "Atualizar Drivers"           = "Busca e instala atualizações de drivers oficiais disponíveis via Windows Update."
+}
+
 $actionNumber = 0
 foreach ($name in $actions.Keys) {
     $actionNumber++
+
+    # Número indicador externo ao botão (Crachá lateral)
+    $lblNum = New-Object System.Windows.Forms.Label
+    $lblNum.Text = ("{0:D2}" -f $actionNumber)
+    $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+    $lblNum.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
+    $lblNum.AutoSize = $true
+
     $btn = New-Object System.Windows.Forms.Button
     $btn.Text = $name
     $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -848,16 +874,23 @@ foreach ($name in $actions.Keys) {
         $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
     }
 
+    # Atribuir Tooltip se houver descrição cadastrada
+    if ($packageTooltips.ContainsKey($name)) {
+        $toolTip.SetToolTip($btn, $packageTooltips[$name])
+    }
+
     if ($actionNumber -le 6) {
         $column = ($actionNumber - 1) % 2
         $row = [int][Math]::Floor(($actionNumber - 1) / 2)
-        $btn.Size = New-Object System.Drawing.Size(292, 82)
-        $btn.Location = New-Object System.Drawing.Point((24 + ($column * 310)), (135 + ($row * 94)))
+        $btn.Size = New-Object System.Drawing.Size(268, 82)
+        $btn.Location = New-Object System.Drawing.Point((48 + ($column * 310)), (135 + ($row * 94)))
+        $lblNum.Location = New-Object System.Drawing.Point((18 + ($column * 310)), (165 + ($row * 94)))
     } else {
         $colIdx = ($actionNumber - 7) % 3
         $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
-        $btn.Size = New-Object System.Drawing.Size(196, 52)
-        $btn.Location = New-Object System.Drawing.Point((24 + ($colIdx * 208)), (462 + ($rowIdx * 60)))
+        $btn.Size = New-Object System.Drawing.Size(176, 52)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 208)), (462 + ($rowIdx * 60)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 208)), (478 + ($rowIdx * 60)))
         $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     }
 
@@ -868,6 +901,8 @@ foreach ($name in $actions.Keys) {
     $btn.Add_MouseEnter({ $this.BackColor = $this.Tag.CorHover })
     $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.CorNormal })
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
+    
+    $form.Controls.Add($lblNum)
     $form.Controls.Add($btn)
 }
 
@@ -972,7 +1007,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 650)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.34"
+$versaoLabel.Text = "v0.35"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
