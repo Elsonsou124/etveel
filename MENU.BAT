@@ -92,11 +92,55 @@ Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -Err
 
 
 # =====================================================================
-# SEÇÃO 3: FUNÇÕES DE SUPORTE E INSTALAÇÃO DE APLICATIVOS (WINGS / FALLBACKS)
+# SEÇÃO 3: FUNÇÕES DE SUPORTE E INSTALAÇÃO DE APLICATIVOS
 # =====================================================================
 
 $appInstallHelpers = @'
 $ProgressPreference = 'SilentlyContinue'
+
+function Invoke-WindowsUpdate {
+    Write-Host "##INFO Iniciando varredura de atualizacoes do Windows (aguarde)..."
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $result = $searcher.Search("IsInstalled=0 and Type='Software'")
+        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Nenhuma atualizacao pendente"; return }
+        Write-Host ("##INFO Encontradas " + $result.Updates.Count + " atualizacoes. Baixando...")
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $result.Updates
+        $downloader.Download()
+        Write-Host "##INFO Baixado. Instalando agora (pode demorar)..."
+        $installer = $session.CreateUpdateInstaller()
+        $installer.Updates = $result.Updates
+        $installResult = $installer.Install()
+        if ($installResult.ResultCode -ne 2) { $global:LASTEXITCODE = $installResult.ResultCode }
+    } catch {
+        Write-Host ("##INFO Erro interno: " + $_.Exception.Message)
+        $global:LASTEXITCODE = 1
+    }
+}
+
+function Invoke-DriverUpdate {
+    Write-Host "##INFO Buscando drivers oficiais pelo Windows Update..."
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $result = $searcher.Search("IsInstalled=0 and Type='Driver'")
+        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Todos os drivers ja estao atualizados"; return }
+        Write-Host ("##INFO Encontrados " + $result.Updates.Count + " drivers pendentes. Baixando...")
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $result.Updates
+        $downloader.Download()
+        Write-Host "##INFO Instalando drivers na maquina..."
+        $installer = $session.CreateUpdateInstaller()
+        $installer.Updates = $result.Updates
+        $installResult = $installer.Install()
+        if ($installResult.ResultCode -ne 2) { $global:LASTEXITCODE = $installResult.ResultCode }
+    } catch {
+        Write-Host ("##INFO Erro ao buscar drivers: " + $_.Exception.Message)
+        $global:LASTEXITCODE = 1
+    }
+}
 
 function Get-VerifiedInstaller {
     param([string]$Uri, [string]$FileName, [string]$PublisherPattern)
@@ -114,7 +158,7 @@ function Get-AdobeVerifiedDownload {
     param([string]$Uri)
     $parsed = [uri]$Uri
     if ($parsed.Scheme -ne 'https' -or $parsed.Host -notin @('ardownload.adobe.com','ardownload2.adobe.com')) {
-        throw 'Link de instalacao fora dos servidores oficiais da Adobe.'
+        throw 'Link fora dos servidores da Adobe.'
     }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $path = Join-Path $env:TEMP ('AdobeReader_' + [guid]::NewGuid().ToString('N') + '.exe')
@@ -681,15 +725,11 @@ $actions = [ordered]@{
     }
 
     "Atualizar Windows" = {
-        Start-Task "Atualizar Windows" (Lote @(
-            'Write-Host "##AGORA [1/1] Iniciando varredura de atualizacoes do Windows..."; $session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $result = $searcher.Search("IsInstalled=0 and Type=""Software"""); if ($result.Updates.Count -eq 0) { Write-Host "##OK Nenhuma atualizacao pendente"; return }; Write-Host ("##INFO Encontradas " + $result.Updates.Count + " atualizacoes. Baixando e instalando..."); $downloader = $session.CreateUpdateDownloader(); $downloader.Updates = $result.Updates; $downloader.Download(); $installer = $session.CreateUpdateInstaller(); $installer.Updates = $result.Updates; $installResult = $installer.Install(); if ($installResult.ResultCode -eq 2) { Write-Host "##OK Atualizacao do Windows concluida com sucesso" } else { throw "Atualizacao finalizada com codigo de resultado: $($installResult.ResultCode)" }'
-        )) -total 1
+        Start-Task "Atualizar Windows" (Lote @(Passo 1 1 "Windows Update" "Invoke-WindowsUpdate"))
     }
 
     "Atualizar Drivers" = {
-        Start-Task "Atualizar Drivers" (Lote @(
-            'Write-Host "##AGORA [1/1] Buscando e instalando drivers oficiais via Windows Update..."; $session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $result = $searcher.Search("IsInstalled=0 and Type=""Driver"""); if ($result.Updates.Count -eq 0) { Write-Host "##OK Todos os drivers ja estao atualizados"; return }; Write-Host ("##INFO Encontrados " + $result.Updates.Count + " drivers para atualizar. Baixando..."); $downloader = $session.CreateUpdateDownloader(); $downloader.Updates = $result.Updates; $downloader.Download(); $installer = $session.CreateUpdateInstaller(); $installer.Updates = $result.Updates; $installResult = $installer.Install(); if ($installResult.ResultCode -eq 2) { Write-Host "##OK Drivers atualizados com sucesso" } else { throw "Instalacao de drivers concluida com codigo: $($installResult.ResultCode)" }'
-        )) -total 1
+        Start-Task "Atualizar Drivers" (Lote @(Passo 1 1 "Drivers Update" "Invoke-DriverUpdate"))
     }
 }
 
