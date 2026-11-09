@@ -176,7 +176,7 @@ function Install-GamerGPUApp {
             } elseif ($name -match '(?i)AMD|Radeon') {
                 $appId = 'AdvancedMicroDevices.AMDSoftware'
                 $appName = 'AMD Software Adrenalin'
-                $directUrl = '' # AMD bloqueia downloads diretos automatizados
+                $directUrl = '' 
                 $webUrl = 'https://www.amd.com/pt/support/download/drivers.html'
             } elseif ($name -match '(?i)Intel') {
                 $appId = 'Intel.DriverAndSupportAssistant'
@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (JANELA E BOTÕES)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (VISUAL PREMIUM / MODERNO)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -685,52 +685,54 @@ $programIcon = [System.Drawing.SystemIcons]::Application
 $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
-$form.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
+$form.Text = "Assistente de Formatação Pro"
 $form.ClientSize = New-Object System.Drawing.Size(1120, 720)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
-$form.BackColor = [System.Drawing.Color]::FromArgb(12, 14, 20)
-$form.ForeColor = [System.Drawing.Color]::White
+$form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+$form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
 # Cabeçalho da Janela
 $header = New-Object System.Windows.Forms.Panel
 $header.Location = New-Object System.Drawing.Point(0, 0)
 $header.Size = New-Object System.Drawing.Size(1120, 80)
-$header.BackColor = [System.Drawing.Color]::FromArgb(20, 25, 35)
+$header.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $form.Controls.Add($header)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = "ASSISTENTE DE FORMATAÇÃO"
-$title.Font = New-Object System.Drawing.Font("Segoe UI Black", 17, [System.Drawing.FontStyle]::Bold)
-$title.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+$title.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
+$title.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
+$title.ForeColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
 $title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(24, 10)
+$title.Location = New-Object System.Drawing.Point(24, 14)
 $header.Controls.Add($title)
 
 $subTitle = New-Object System.Windows.Forms.Label
-$subTitle.Text = "CENTRAL DE AUTOMAÇÃO  |  AÇÕES NUMERADAS"
-$subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$subTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
+$subTitle.Text = "Central de Automação e Pós-Instalação"
+$subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$subTitle.ForeColor = [System.Drawing.Color]::FromArgb(150, 160, 175)
 $subTitle.AutoSize = $true
-$subTitle.Location = New-Object System.Drawing.Point(27, 48)
+$subTitle.Location = New-Object System.Drawing.Point(28, 48)
 $header.Controls.Add($subTitle)
 
 # Botão Sair
 $sair = New-Object System.Windows.Forms.Button
-$sair.Text = "Sair"
-$sair.Size = New-Object System.Drawing.Size(150, 50)
-$sair.Location = New-Object System.Drawing.Point(24, 645)
+$sair.Text = "Encerrar Ferramenta"
+$sair.Size = New-Object System.Drawing.Size(170, 45)
+$sair.Location = New-Object System.Drawing.Point(24, 650)
 $sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($sair)
 $sair.BringToFront()
 $sair.FlatStyle = "Flat"
-$sair.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$sair.BackColor = [System.Drawing.Color]::FromArgb(140, 20, 30)
+$sair.FlatAppearance.BorderSize = 0
+$sair.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
+$sair.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60)
 $sair.ForeColor = [System.Drawing.Color]::White
-$sair.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 60, 80)
 $sair.Cursor = [System.Windows.Forms.Cursors]::Hand
+$sair.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(220, 60, 70) })
+$sair.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60) })
 $sair.Add_Click({ 
     try {
         Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
@@ -746,17 +748,17 @@ $sair.Add_Click({
 
 # Rótulos das Seções
 $individualTitle = New-Object System.Windows.Forms.Label
-$individualTitle.Text = "AÇÕES INDIVIDUAIS  |  01-06"
-$individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 200, 220)
+$individualTitle.Text = "AÇÕES INDIVIDUAIS"
+$individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $individualTitle.AutoSize = $true
-$individualTitle.Location = New-Object System.Drawing.Point(24, 101)
+$individualTitle.Location = New-Object System.Drawing.Point(24, 105)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
-$bundleTitle.Text = "PACOTES E MANUTENÇÃO  |  07-12"
-$bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+$bundleTitle.Text = "PACOTES & MANUTENÇÃO"
+$bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $bundleTitle.AutoSize = $true
 $bundleTitle.Location = New-Object System.Drawing.Point(24, 432)
 $form.Controls.Add($bundleTitle)
@@ -825,87 +827,74 @@ $actionNumber = 0
 foreach ($name in $actions.Keys) {
     $actionNumber++
     $btn = New-Object System.Windows.Forms.Button
-    $btn.Text = ("{0:D2}`r`n{1}" -f $actionNumber, $name)
+    $btn.Text = $name
     $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+    $btn.FlatAppearance.BorderSize = 0
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
     $btn.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $btn.UseVisualStyleBackColor = $false
+    
+    $baseBg = [System.Drawing.Color]::FromArgb(45, 48, 58)
+    $baseFg = [System.Drawing.Color]::FromArgb(230, 230, 230)
+    $hoverBg = [System.Drawing.Color]::FromArgb(60, 65, 80)
+
+    if ($name -eq "Kit Gamer") {
+        $baseBg = [System.Drawing.Color]::FromArgb(0, 120, 215)
+        $baseFg = [System.Drawing.Color]::White
+        $hoverBg = [System.Drawing.Color]::FromArgb(20, 140, 240)
+    } elseif ($name -match "INSTALAR TUDO") {
+        $baseBg = [System.Drawing.Color]::FromArgb(50, 140, 90)
+        $baseFg = [System.Drawing.Color]::White
+        $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
+    }
 
     if ($actionNumber -le 6) {
         $column = ($actionNumber - 1) % 2
         $row = [int][Math]::Floor(($actionNumber - 1) / 2)
         $btn.Size = New-Object System.Drawing.Size(292, 82)
-        $btn.Location = New-Object System.Drawing.Point((24 + ($column * 310)), (143 + ($row * 94)))
-        $btn.BackColor = [System.Drawing.Color]::FromArgb(24, 30, 42)
-        $btn.ForeColor = [System.Drawing.Color]::FromArgb(220, 235, 255)
-        $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 180, 220)
-        $btn.FlatAppearance.BorderSize = 1
+        $btn.Location = New-Object System.Drawing.Point((24 + ($column * 310)), (135 + ($row * 94)))
     } else {
         $colIdx = ($actionNumber - 7) % 3
         $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
         $btn.Size = New-Object System.Drawing.Size(196, 52)
-        $btn.Location = New-Object System.Drawing.Point((24 + ($colIdx * 208)), (466 + ($rowIdx * 60)))
-        
-        if ($actionNumber -eq 7) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(15, 82, 112)
-            $btn.ForeColor = [System.Drawing.Color]::White
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 211, 238)
-        } elseif ($actionNumber -eq 8) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(76, 55, 120)
-            $btn.ForeColor = [System.Drawing.Color]::White
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(167, 139, 250)
-        } elseif ($actionNumber -eq 9) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(20, 105, 74)
-            $btn.ForeColor = [System.Drawing.Color]::FromArgb(230, 255, 240)
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(52, 211, 153)
-        } elseif ($actionNumber -eq 10) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(190, 60, 0)
-            $btn.ForeColor = [System.Drawing.Color]::White
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 120, 40)
-        } elseif ($actionNumber -eq 11) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(30, 90, 130)
-            $btn.ForeColor = [System.Drawing.Color]::FromArgb(220, 245, 255)
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80, 180, 255)
-        } else {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(90, 70, 30)
-            $btn.ForeColor = [System.Drawing.Color]::FromArgb(255, 245, 220)
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 200, 80)
-        }
-        $btn.FlatAppearance.BorderSize = 2
+        $btn.Location = New-Object System.Drawing.Point((24 + ($colIdx * 208)), (462 + ($rowIdx * 60)))
+        $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     }
 
-    $btn.Tag = @{ Acao = $actions[$name]; Cor = $btn.BackColor }
-    $btn.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(40, 55, 80) })
-    $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.Cor })
+    $btn.BackColor = $baseBg
+    $btn.ForeColor = $baseFg
+    $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg }
+    
+    $btn.Add_MouseEnter({ $this.BackColor = $this.Tag.CorHover })
+    $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.CorNormal })
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     $form.Controls.Add($btn)
 }
 
 
 # =====================================================================
-# SEÇÃO 8: PAINEL DE STATUS, LOGS E TIMER DE EXECUÇÃO
+# SEÇÃO 8: PAINEL DE STATUS E LOGS (ESTILO VS CODE)
 # =====================================================================
 
 $logTitle = New-Object System.Windows.Forms.Label
-$logTitle.Text = "ACOMPANHAMENTO"
-$logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-$logTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+$logTitle.Text = "CONSOLE DE TAREFAS"
+$logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$logTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $logTitle.AutoSize = $true
-$logTitle.Location = New-Object System.Drawing.Point(680, 101)
+$logTitle.Location = New-Object System.Drawing.Point(680, 105)
 $form.Controls.Add($logTitle)
 
 $lblStatus = New-Object System.Windows.Forms.Label
-$lblStatus.Text = "Aguardando comando..."
-$lblStatus.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
-$lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 175, 200)
+$lblStatus.Text = "Aguardando ação..."
+$lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+$lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
 $lblStatus.AutoSize = $true
-$lblStatus.Location = New-Object System.Drawing.Point(680, 133)
+$lblStatus.Location = New-Object System.Drawing.Point(680, 135)
 $form.Controls.Add($lblStatus)
 
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Location = New-Object System.Drawing.Point(680, 160)
-$progressBar.Size = New-Object System.Drawing.Size(416, 20)
+$progressBar.Size = New-Object System.Drawing.Size(416, 12)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $form.Controls.Add($progressBar)
 
@@ -913,21 +902,13 @@ $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(680, 190)
-$logBox.Size = New-Object System.Drawing.Size(416, 430)
-$logBox.BackColor = [System.Drawing.Color]::FromArgb(6, 8, 12)
-$logBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 130)
-$logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5)
-$logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$logBox.Location = New-Object System.Drawing.Point(680, 185)
+$logBox.Size = New-Object System.Drawing.Size(416, 440)
+$logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
+$logBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+$logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $form.Controls.Add($logBox)
-
-$watermark = New-Object System.Windows.Forms.Label
-$watermark.Text = "ELSON (Criatividade E Tudo)"
-$watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
-$watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
-$watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(680, 645)
-$form.Controls.Add($watermark)
 
 # Timer de atualização dos logs da fila
 $timer = New-Object System.Windows.Forms.Timer
@@ -980,14 +961,22 @@ $timer.Start()
 
 
 # =====================================================================
-# SEÇÃO 9: CONTROLE DE VERSÃO (FÁCIL ALTERAÇÃO NA ÚLTIMA LINHA)
+# SEÇÃO 9: MARCAS E VERSÃO (DISCRETAS)
 # =====================================================================
+$watermark = New-Object System.Windows.Forms.Label
+$watermark.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"
+$watermark.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$watermark.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
+$watermark.AutoSize = $true
+$watermark.Location = New-Object System.Drawing.Point(680, 650)
+$form.Controls.Add($watermark)
+
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "VERSÃO 0.33"
-$versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI Black", 14, [System.Drawing.FontStyle]::Bold)
-$versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 220, 0)
+$versaoLabel.Text = "v0.34"
+$versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
-$versaoLabel.Location = New-Object System.Drawing.Point(950, 640)
+$versaoLabel.Location = New-Object System.Drawing.Point(1055, 650)
 $form.Controls.Add($versaoLabel)
 
 
