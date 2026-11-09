@@ -98,6 +98,24 @@ Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -Err
 $appInstallHelpers = @'
 $ProgressPreference = 'SilentlyContinue'
 
+function Ensure-WinGetInstalled {
+    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if ($wingetCmd) { return }
+
+    Write-Host "##INFO WinGet nao detectado no sistema. Instalando App Installer da Microsoft..."
+    try {
+        $msixUrl = "https://aka.ms/getwinget"
+        $tmpFile = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+        Invoke-WebRequest -Uri $msixUrl -OutFile $tmpFile -UseBasicParsing -ErrorAction Stop
+        Add-AppxPackage -Path $tmpFile -ErrorAction Stop
+        Write-Host "##INFO WinGet instalado com sucesso!"
+    } catch {
+        Write-Host "##INFO Falha ao instalar WinGet automaticamente. Usando fallbacks diretos."
+    } finally {
+        Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-WindowsUpdate {
     Write-Host "##INFO Iniciando varredura de atualizacoes do Windows (aguarde)..."
     try {
@@ -143,6 +161,7 @@ function Invoke-DriverUpdate {
 }
 
 function Install-GamerGPUApp {
+    Ensure-WinGetInstalled
     Write-Host "##INFO Detectando Hardware de Video (Intel/AMD/NVIDIA)..."
     try {
         $gpus = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
@@ -364,7 +383,7 @@ function Get-PackageVerifiedDownload {
                     if ($LASTEXITCODE -ne 0) { throw 'curl falhou' }
                 }
             }
-            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) { throw 'Arquivo incompleto' }
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -gt 1000000) { throw 'Arquivo incompleto' }
             if ($Sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $Sha256) {
                 throw 'Hash invalido'
             }
@@ -457,6 +476,10 @@ function Install-AppFallback {
     $global:LASTEXITCODE = 1
     $wingetCode = 1
     $wingetPath = $null
+
+    # Garante que o WinGet esta presente no sistema antes de rodar
+    Ensure-WinGetInstalled
+
     if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner') -and (Test-MenuPackageInstalled -Id $Id)) {
         $global:LASTEXITCODE=-1978335189; return
     }
@@ -712,7 +735,7 @@ $lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
 $splashPanel.Controls.Add($lblSplashSub)
 
 $lblSplashVer = New-Object System.Windows.Forms.Label
-$lblSplashVer.Text = "Versão 0.45 — Inicializando Ambiente..."
+$lblSplashVer.Text = "Versão 0.46 — Inicializando Ambiente..."
 $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
 $lblSplashVer.AutoSize = $true
@@ -1240,7 +1263,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.45"
+$versaoLabel.Text = "v0.46"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
