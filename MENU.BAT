@@ -605,7 +605,7 @@ try {
     $exe = Get-OfficeInstaller
 '@ + "`r`n" + $officeWaitAndClose + "`r`n" + @'
     if ($global:LASTEXITCODE -eq 3010) { $global:LASTEXITCODE = 0 }
-    if ($global:LASTEXITCODE -0) {
+    if ($global:LASTEXITCODE -eq 0) {
 '@ + "`r`n" + $officeShortcuts + "`r`n" + @'
     }
 } catch {
@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (SEM BORDA REAL + ESPAÇAMENTO AJUSTADO)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (SEM BORDER E SEM MAXIMIZAR)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -688,10 +688,9 @@ $form.ShowIcon = $true
 $form.Text = "Assistente de Formatação Pro"
 $form.ClientSize = New-Object System.Drawing.Size(1120, 690)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedToolWindow
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None # Remove completamente qualquer borda padrão
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
-$form.ControlBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
@@ -699,7 +698,7 @@ $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $global:dragging = $false
 $global:dragCursorPoint = $null
 
-# Barra de título personalizada
+# Barra de título personalizada (substituta 100% nativa em Dark Mode)
 $customTitleBar = New-Object System.Windows.Forms.Panel
 $customTitleBar.Location = New-Object System.Drawing.Point(0, 0)
 $customTitleBar.Size = New-Object System.Drawing.Size(1120, 35)
@@ -732,7 +731,7 @@ $lblWindowTitle.Add_MouseDown({ $customTitleBar.InvokeMember("OnMouseDown", $_) 
 $lblWindowTitle.Add_MouseMove({ $customTitleBar.InvokeMember("OnMouseMove", $_) })
 $lblWindowTitle.Add_MouseUp({ $customTitleBar.InvokeMember("OnMouseUp", $_) })
 
-# Botões de Controle personalizados (Fechar, Maximizar, Minimizar)
+# Botão Fechar (X)
 $btnClose = New-Object System.Windows.Forms.Button
 $btnClose.Text = "✕"
 $btnClose.Size = New-Object System.Drawing.Size(45, 35)
@@ -759,36 +758,16 @@ $btnClose.Add_Click({
 })
 $customTitleBar.Controls.Add($btnClose)
 
-$btnMaximize = New-Object System.Windows.Forms.Button
-$btnMaximize.Text = "🗖"
-$btnMaximize.Size = New-Object System.Drawing.Size(45, 35)
-$btnMaximize.Location = New-Object System.Drawing.Point(1030, 0)
-$btnMaximize.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnMaximize.FlatAppearance.BorderSize = 0
-$btnMaximize.BackColor = [System.Drawing.Color]::FromArgb(15, 17, 22)
-$btnMaximize.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
-$btnMaximize.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-$btnMaximize.Cursor = [System.Windows.Forms.Cursors]::Hand
-$btnMaximize.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(50, 55, 70); $this.ForeColor = [System.Drawing.Color]::White })
-$btnMaximize.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(15, 17, 22); $this.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200) })
-$btnMaximize.Add_Click({
-    if ($form.WindowState -eq [System.Windows.Forms.FormWindowState]::Maximized) {
-        $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
-    } else {
-        $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
-    }
-})
-$customTitleBar.Controls.Add($btnMaximize)
-
+# Botão Minimizar (_) limpo e correto
 $btnMinimize = New-Object System.Windows.Forms.Button
-$btnMinimize.Text = "🠟"
+$btnMinimize.Text = "—"
 $btnMinimize.Size = New-Object System.Drawing.Size(45, 35)
-$btnMinimize.Location = New-Object System.Drawing.Point(985, 0)
+$btnMinimize.Location = New-Object System.Drawing.Point(1030, 0)
 $btnMinimize.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnMinimize.FlatAppearance.BorderSize = 0
 $btnMinimize.BackColor = [System.Drawing.Color]::FromArgb(15, 17, 22)
 $btnMinimize.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
-$btnMinimize.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$btnMinimize.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $btnMinimize.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnMinimize.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(50, 55, 70); $this.ForeColor = [System.Drawing.Color]::White })
 $btnMinimize.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(15, 17, 22); $this.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200) })
@@ -855,7 +834,7 @@ $sair.Add_Click({
     $form.Close() 
 })
 
-# Rótulos das Seções (Espaçamento corrigido e compacto)
+# Rótulos das Seções
 $individualTitle = New-Object System.Windows.Forms.Label
 $individualTitle.Text = "AÇÕES INDIVIDUAIS"
 $individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
@@ -1106,7 +1085,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.39"
+$versaoLabel.Text = "v0.40"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
