@@ -624,7 +624,11 @@ $global:tasks = New-Object System.Collections.ArrayList
 $global:totalEtapas = 0
 $global:etapaAtual = 0
 
-function Log($msg) { $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") }
+function Log($msg) { 
+    $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") 
+    $logBox.SelectionStart = $logBox.Text.Length
+    $logBox.ScrollToCaret()
+}
 
 function Start-Task($titulo, $script, $total = 1) {
     $taskId = [guid]::NewGuid().ToString('N')
@@ -1013,7 +1017,7 @@ foreach ($name in $actions.Keys) {
 
 
 # =====================================================================
-# SEÇÃO 8: PAINEL DE STATUS E LOGS (COM BARRA DE PROGRESSO 100% CUSTOMIZADA ESCURA)
+# SEÇÃO 8: PAINEL DE STATUS E LOGS (CONSOLE CUSTOMIZADO COM BARRA 100% ESCURA)
 # =====================================================================
 
 $logTitle = New-Object System.Windows.Forms.Label
@@ -1032,7 +1036,7 @@ $lblStatus.AutoSize = $true
 $lblStatus.Location = New-Object System.Drawing.Point(680, 142)
 $form.Controls.Add($lblStatus)
 
-# Barra de Progresso Customizada (Fundo Grafite Escuro + Barra Azul Elétrica)
+# Barra de Progresso Customizada Escura
 $progressBarBg = New-Object System.Windows.Forms.Panel
 $progressBarBg.Location = New-Object System.Drawing.Point(680, 170)
 $progressBarBg.Size = New-Object System.Drawing.Size(416, 8)
@@ -1056,17 +1060,47 @@ function Update-CustomProgress($val) {
     }
 }
 
+# Container do Console para Embutir a TextBox sem borda branca de rolagem
+$logContainer = New-Object System.Windows.Forms.Panel
+$logContainer.Location = New-Object System.Drawing.Point(680, 190)
+$logContainer.Size = New-Object System.Drawing.Size(416, 420)
+$logContainer.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
+$form.Controls.Add($logContainer)
+
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
-$logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(680, 190)
-$logBox.Size = New-Object System.Drawing.Size(416, 420)
+$logBox.ScrollBars = "None" # Removemos a barra nativa branca
+$logBox.Location = New-Object System.Drawing.Point(0, 0)
+$logBox.Size = New-Object System.Drawing.Size(390, 420)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
 $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-$form.Controls.Add($logBox)
+$logContainer.Controls.Add($logBox)
+
+# Barra de Rolagem Customizada 100% Escura no Tom
+$customScrollBg = New-Object System.Windows.Forms.Panel
+$customScrollBg.Location = New-Object System.Drawing.Point(398, 0)
+$customScrollBg.Size = New-Object System.Drawing.Size(18, 420)
+$customScrollBg.BackColor = [System.Drawing.Color]::FromArgb(25, 28, 36)
+$logContainer.Controls.Add($customScrollBg)
+
+$customScrollThumb = New-Object System.Windows.Forms.Panel
+$customScrollThumb.Location = New-Object System.Drawing.Point(2, 2)
+$customScrollThumb.Size = New-Object System.Drawing.Size(14, 60)
+$customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(60, 68, 85)
+$customScrollBg.Controls.Add($customScrollThumb)
+
+# Lógica de rolagem ao digitar ou interagir
+$logBox.Add_TextChanged({
+    $linhasTotais = $logBox.Lines.Count
+    if ($linhasTotais -gt 25) {
+        $ratio = 420 / ($linhasTotais * 16)
+        $thumbHeight = [Math]::Max(30, [int](420 * $ratio))
+        $customScrollThumb.Height = [Math]::Min(420, $thumbHeight)
+    }
+})
 
 # Timer de atualização dos logs da fila
 $timer = New-Object System.Windows.Forms.Timer
@@ -1132,7 +1166,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.43"
+$versaoLabel.Text = "v0.44"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
