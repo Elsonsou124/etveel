@@ -555,7 +555,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
 $form.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
-$form.ClientSize = New-Object System.Drawing.Size(1120, 680)
+$form.ClientSize = New-Object System.Drawing.Size(1120, 720)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
@@ -623,7 +623,7 @@ $individualTitle.Location = New-Object System.Drawing.Point(24, 101)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
-$bundleTitle.Text = "PACOTES DE INSTALAÇÃO  |  07-10"
+$bundleTitle.Text = "PACOTES E MANUTENÇÃO  |  07-12"
 $bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
 $bundleTitle.AutoSize = $true
@@ -670,18 +670,26 @@ $actions = [ordered]@{
         )) -total 5
     }
 
-        "Kit Gamer" = {
+    "Kit Gamer" = {
         Start-Task "Kit Gamer" (Lote @(
             'Write-Host "##AGORA [1/5] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"',
-            
             'Write-Host "##AGORA [2/5] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"',
-            
             'Write-Host "##AGORA [3/5] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"',
-            
             'Write-Host "##AGORA [4/5] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"',
-            
             'Write-Host "##AGORA [5/5] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"'
         )) -total 5
+    }
+
+    "Atualizar Windows" = {
+        Start-Task "Atualizar Windows" (Lote @(
+            'Write-Host "##AGORA [1/2] Iniciando varredura de atualizacoes do Windows..."; $session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $result = $searcher.Search("IsInstalled=0 and Type=\'Software\'"); if ($result.Updates.Count -eq 0) { Write-Host "##OK Nenhuma atualizacao pendente"; return }; Write-Host ("##INFO Encontradas " + $result.Updates.Count + " atualizacoes. Baixando e instalando..."); $downloader = $session.CreateUpdateDownloader(); $downloader.Updates = $result.Updates; $downloader.Download(); $installer = $session.CreateUpdateInstaller(); $installer.Updates = $result.Updates; $installResult = $installer.Install(); if ($installResult.ResultCode -eq 2) { Write-Host "##OK Atualizacao do Windows concluida com sucesso" } else { throw "Atualizacao finalizada com codigo de resultado: $($installResult.ResultCode)" }'
+        )) -total 1
+    }
+
+    "Atualizar Drivers" = {
+        Start-Task "Atualizar Drivers" (Lote @(
+            'Write-Host "##AGORA [1/1] Buscando e instalando drivers oficiais via Windows Update..."; $session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $result = $searcher.Search("IsInstalled=0 and Type=\'Driver\'"); if ($result.Updates.Count -eq 0) { Write-Host "##OK Todos os drivers ja estao atualizados"; return }; Write-Host ("##INFO Encontrados " + $result.Updates.Count + " drivers para atualizar. Baixando..."); $downloader = $session.CreateUpdateDownloader(); $downloader.Updates = $result.Updates; $downloader.Download(); $installer = $session.CreateUpdateInstaller(); $installer.Updates = $result.Updates; $installResult = $installer.Install(); if ($installResult.ResultCode -eq 2) { Write-Host "##OK Drivers atualizados com sucesso" } else { throw "Instalacao de drivers concluida com codigo: $($installResult.ResultCode)" }'
+        )) -total 1
     }
 }
 
@@ -706,8 +714,10 @@ foreach ($name in $actions.Keys) {
         $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(0, 180, 220)
         $btn.FlatAppearance.BorderSize = 1
     } else {
-        $btn.Size = New-Object System.Drawing.Size(156, 112)
-        $btn.Location = New-Object System.Drawing.Point((24 + (($actionNumber - 7) * 166)), 466)
+        $colIdx = ($actionNumber - 7) % 3
+        $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
+        $btn.Size = New-Object System.Drawing.Size(196, 52)
+        $btn.Location = New-Object System.Drawing.Point((24 + ($colIdx * 208)), (466 + ($rowIdx * 60)))
         
         if ($actionNumber -eq 7) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(15, 82, 112)
@@ -720,13 +730,19 @@ foreach ($name in $actions.Keys) {
         } elseif ($actionNumber -eq 9) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(20, 105, 74)
             $btn.ForeColor = [System.Drawing.Color]::FromArgb(230, 255, 240)
-            $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
             $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(52, 211, 153)
-        } else {
+        } elseif ($actionNumber -eq 10) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(120, 30, 30)
             $btn.ForeColor = [System.Drawing.Color]::FromArgb(255, 230, 230)
-            $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
             $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 80, 80)
+        } elseif ($actionNumber -eq 11) {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(30, 90, 130)
+            $btn.ForeColor = [System.Drawing.Color]::FromArgb(220, 245, 255)
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80, 180, 255)
+        } else {
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(90, 70, 30)
+            $btn.ForeColor = [System.Drawing.Color]::FromArgb(255, 245, 220)
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 200, 80)
         }
         $btn.FlatAppearance.BorderSize = 2
     }
@@ -770,7 +786,7 @@ $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
 $logBox.Location = New-Object System.Drawing.Point(680, 190)
-$logBox.Size = New-Object System.Drawing.Size(416, 390)
+$logBox.Size = New-Object System.Drawing.Size(416, 430)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(6, 8, 12)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 130)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5)
@@ -782,7 +798,7 @@ $watermark.Text = "ELSON (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
 $watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(680, 610)
+$watermark.Location = New-Object System.Drawing.Point(680, 645)
 $form.Controls.Add($watermark)
 
 # Timer de atualização dos logs da fila
@@ -839,11 +855,11 @@ $timer.Start()
 # SEÇÃO 9: CONTROLE DE VERSÃO (FÁCIL ALTERAÇÃO NA ÚLTIMA LINHA)
 # =====================================================================
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "VERSÃO 0.29"
+$versaoLabel.Text = "VERSÃO 0.30"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI Black", 14, [System.Drawing.FontStyle]::Bold)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 220, 0)
 $versaoLabel.AutoSize = $true
-$versaoLabel.Location = New-Object System.Drawing.Point(950, 605)
+$versaoLabel.Location = New-Object System.Drawing.Point(950, 640)
 $form.Controls.Add($versaoLabel)
 
 
