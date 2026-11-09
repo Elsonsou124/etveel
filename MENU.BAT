@@ -681,7 +681,82 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (TUDO ESCURO E CUSTOMIZADO)
+# SEÇÃO 5.5: SPLASH SCREEN (MINI ANIMAÇÃO DE ABERTURA)
+# =====================================================================
+$splash = New-Object System.Windows.Forms.Form
+$splash.ClientSize = New-Object System.Drawing.Size(460, 220)
+$splash.StartPosition = "CenterScreen"
+$splash.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+$splash.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
+$splash.Opacity = 0.0
+
+$splashPanel = New-Object System.Windows.Forms.Panel
+$splashPanel.Dock = "Fill"
+$splashPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
+$splash.Controls.Add($splashPanel)
+
+$lblSplashTitle = New-Object System.Windows.Forms.Label
+$lblSplashTitle.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
+$lblSplashTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$lblSplashTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255)
+$lblSplashTitle.AutoSize = $true
+$lblSplashTitle.Location = New-Object System.Drawing.Point(65, 45)
+$splashPanel.Controls.Add($lblSplashTitle)
+
+$lblSplashSub = New-Object System.Windows.Forms.Label
+$lblSplashSub.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"
+$lblSplashSub.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+$lblSplashSub.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 205)
+$lblSplashSub.AutoSize = $true
+$lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
+$splashPanel.Controls.Add($lblSplashSub)
+
+$lblSplashVer = New-Object System.Windows.Forms.Label
+$lblSplashVer.Text = "Versão 0.45 — Inicializando Ambiente..."
+$lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
+$lblSplashVer.AutoSize = $true
+$lblSplashVer.Location = New-Object System.Drawing.Point(135, 125)
+$splashPanel.Controls.Add($lblSplashVer)
+
+# Barra de carregamento decorativa na Splash Screen
+$splashBarBg = New-Object System.Windows.Forms.Panel
+$splashBarBg.Location = New-Object System.Drawing.Point(50, 170)
+$splashBarBg.Size = New-Object System.Drawing.Size(360, 4)
+$splashBarBg.BackColor = [System.Drawing.Color]::FromArgb(35, 40, 50)
+$splashPanel.Controls.Add($splashBarBg)
+
+$splashBarFill = New-Object System.Windows.Forms.Panel
+$splashBarFill.Location = New-Object System.Drawing.Point(0, 0)
+$splashBarFill.Size = New-Object System.Drawing.Size(0, 4)
+$splashBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 200, 255)
+$splashBarBg.Controls.Add($splashBarFill)
+
+$splashTimer = New-Object System.Windows.Forms.Timer
+$splashTimer.Interval = 20
+$global:splashCount = 0
+
+$splashTimer.Add_Tick({
+    $global:splashCount++
+    if ($splash.Opacity -lt 1.0) {
+        $splash.Opacity += 0.08
+    }
+    $currentWidth = [int](($global:splashCount / 75) * 360)
+    if ($currentWidth -le 360) { $splashBarFill.Width = $currentWidth }
+
+    if ($global:splashCount -gt 75) {
+        $splashTimer.Stop()
+        $splash.Close()
+    }
+})
+
+$splash.Add_Shown({ $splashTimer.Start() })
+$splash.ShowDialog()
+$splash.Dispose()
+
+
+# =====================================================================
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA PRINCIPAL
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -1070,7 +1145,7 @@ $form.Controls.Add($logContainer)
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
-$logBox.ScrollBars = "None" # Removemos a barra nativa branca
+$logBox.ScrollBars = "None"
 $logBox.Location = New-Object System.Drawing.Point(0, 0)
 $logBox.Size = New-Object System.Drawing.Size(390, 420)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
@@ -1092,7 +1167,6 @@ $customScrollThumb.Size = New-Object System.Drawing.Size(14, 60)
 $customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(60, 68, 85)
 $customScrollBg.Controls.Add($customScrollThumb)
 
-# Lógica de rolagem ao digitar ou interagir
 $logBox.Add_TextChanged({
     $linhasTotais = $logBox.Lines.Count
     if ($linhasTotais -gt 25) {
@@ -1166,7 +1240,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.44"
+$versaoLabel.Text = "v0.45"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
