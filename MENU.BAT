@@ -630,12 +630,12 @@ $subTitle.AutoSize = $true
 $subTitle.Location = New-Object System.Drawing.Point(27, 48)
 $header.Controls.Add($subTitle)
 
-# Botão Sair (Restaura o Defender e fecha)
+# Botão Sair (Corrigido para não cortar e alinhado ao canto)
 $sair = New-Object System.Windows.Forms.Button
 $sair.Text = "Sair"
-$sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
-$sair.Location = New-Object System.Drawing.Point(20, ($form.ClientSize.Height - $sair.Height - 40))
 $sair.Size = New-Object System.Drawing.Size(150, 50)
+$sair.Location = New-Object System.Drawing.Point(24, 645)
+$sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($sair)
 $sair.BringToFront()
 $sair.FlatStyle = "Flat"
@@ -772,9 +772,10 @@ foreach ($name in $actions.Keys) {
             $btn.ForeColor = [System.Drawing.Color]::FromArgb(230, 255, 240)
             $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(52, 211, 153)
         } elseif ($actionNumber -eq 10) {
-            $btn.BackColor = [System.Drawing.Color]::FromArgb(120, 30, 30)
-            $btn.ForeColor = [System.Drawing.Color]::FromArgb(255, 230, 230)
-            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 80, 80)
+            # Novo visual do Kit Gamer (Laranja vibrante)
+            $btn.BackColor = [System.Drawing.Color]::FromArgb(190, 60, 0)
+            $btn.ForeColor = [System.Drawing.Color]::White
+            $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(255, 120, 40)
         } elseif ($actionNumber -eq 11) {
             $btn.BackColor = [System.Drawing.Color]::FromArgb(30, 90, 130)
             $btn.ForeColor = [System.Drawing.Color]::FromArgb(220, 245, 255)
@@ -895,7 +896,7 @@ $timer.Start()
 # SEÇÃO 9: CONTROLE DE VERSÃO (FÁCIL ALTERAÇÃO NA ÚLTIMA LINHA)
 # =====================================================================
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "VERSÃO 0.30"
+$versaoLabel.Text = "VERSÃO 0.31"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI Black", 14, [System.Drawing.FontStyle]::Bold)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 220, 0)
 $versaoLabel.AutoSize = $true
