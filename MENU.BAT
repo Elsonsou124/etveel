@@ -734,7 +734,7 @@ $lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
 $splashPanel.Controls.Add($lblSplashSub)
 
 $lblSplashVer = New-Object System.Windows.Forms.Label
-$lblSplashVer.Text = "Versão 0.47 — Inicializando Ambiente..."
+$lblSplashVer.Text = "Versão 0.48 — Inicializando Ambiente..."
 $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
 $lblSplashVer.AutoSize = $true
@@ -796,10 +796,9 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
-$global:dragging = $false
-$global:dragCursorPoint = $null
+$global:mouseOffset = $null
 
-# Barra de título personalizada
+# Barra de título personalizada com arrasto seguro
 $customTitleBar = New-Object System.Windows.Forms.Panel
 $customTitleBar.Location = New-Object System.Drawing.Point(0, 0)
 $customTitleBar.Size = New-Object System.Drawing.Size(1120, 35)
@@ -808,18 +807,16 @@ $form.Controls.Add($customTitleBar)
 
 $customTitleBar.Add_MouseDown({
     if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $global:dragging = $true
-        $global:dragCursorPoint = [System.Windows.Forms.Cursor]::Position
+        $global:mouseOffset = New-Object System.Drawing.Point($_.X, $_.Y)
     }
 })
 $customTitleBar.Add_MouseMove({
-    if ($global:dragging) {
-        $dif = [System.Drawing.Point]::Subtract([System.Windows.Forms.Cursor]::Position, (New-Object System.Drawing.Size($global:dragCursorPoint)))
-        $form.Location = [System.Drawing.Point]::Add($form.Location, (New-Object System.Drawing.Size($dif)))
-        $global:dragCursorPoint = [System.Windows.Forms.Cursor]::Position
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $mousePos = [System.Windows.Forms.Control]::MousePosition
+        $mousePos.Offset(-$global:mouseOffset.X, -$global:mouseOffset.Y)
+        $form.Location = $mousePos
     }
 })
-$customTitleBar.Add_MouseUp({ $global:dragging = $false })
 
 $lblWindowTitle = New-Object System.Windows.Forms.Label
 $lblWindowTitle.Text = "  Assistente de Formatação Pro"
@@ -828,9 +825,19 @@ $lblWindowTitle.ForeColor = [System.Drawing.Color]::FromArgb(200, 210, 225)
 $lblWindowTitle.AutoSize = $true
 $lblWindowTitle.Location = New-Object System.Drawing.Point(5, 8)
 $customTitleBar.Controls.Add($lblWindowTitle)
-$lblWindowTitle.Add_MouseDown({ $customTitleBar.InvokeMember("OnMouseDown", $_) })
-$lblWindowTitle.Add_MouseMove({ $customTitleBar.InvokeMember("OnMouseMove", $_) })
-$lblWindowTitle.Add_MouseUp({ $customTitleBar.InvokeMember("OnMouseUp", $_) })
+
+$lblWindowTitle.Add_MouseDown({
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $global:mouseOffset = New-Object System.Drawing.Point($_.X + $lblWindowTitle.Location.X, $_.Y + $lblWindowTitle.Location.Y)
+    }
+})
+$lblWindowTitle.Add_MouseMove({
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $mousePos = [System.Windows.Forms.Control]::MousePosition
+        $mousePos.Offset(-$global:mouseOffset.X, -$global:mouseOffset.Y)
+        $form.Location = $mousePos
+    }
+})
 
 # Botão Fechar (X)
 $btnClose = New-Object System.Windows.Forms.Button
@@ -1261,7 +1268,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.47"
+$versaoLabel.Text = "v0.48"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
