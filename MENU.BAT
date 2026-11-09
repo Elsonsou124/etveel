@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (SEM BORDER E SEM MAXIMIZAR)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (TUDO ESCURO E CUSTOMIZADO)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -688,7 +688,7 @@ $form.ShowIcon = $true
 $form.Text = "Assistente de Formatação Pro"
 $form.ClientSize = New-Object System.Drawing.Size(1120, 690)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None # Remove completamente qualquer borda padrão
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
@@ -698,7 +698,7 @@ $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $global:dragging = $false
 $global:dragCursorPoint = $null
 
-# Barra de título personalizada (substituta 100% nativa em Dark Mode)
+# Barra de título personalizada
 $customTitleBar = New-Object System.Windows.Forms.Panel
 $customTitleBar.Location = New-Object System.Drawing.Point(0, 0)
 $customTitleBar.Size = New-Object System.Drawing.Size(1120, 35)
@@ -758,7 +758,7 @@ $btnClose.Add_Click({
 })
 $customTitleBar.Controls.Add($btnClose)
 
-# Botão Minimizar (_) limpo e correto
+# Botão Minimizar (-)
 $btnMinimize = New-Object System.Windows.Forms.Button
 $btnMinimize.Text = "—"
 $btnMinimize.Size = New-Object System.Drawing.Size(45, 35)
@@ -775,13 +775,24 @@ $btnMinimize.Add_Click({ $form.WindowState = [System.Windows.Forms.FormWindowSta
 $customTitleBar.Controls.Add($btnMinimize)
 
 
-# Componente de Tooltip
-$toolTip = New-Object System.Windows.Forms.ToolTip
-$toolTip.AutoPopDelay = 10000
-$toolTip.InitialDelay = 400
-$toolTip.ReshowDelay = 100
-$toolTip.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 52)
-$toolTip.ForeColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+# =====================================================================
+# SISTEMA DE TOOLTIP PERSONALIZADO (100% ESCURO)
+# =====================================================================
+$customToolTip = New-Object System.Windows.Forms.Panel
+$customToolTip.Size = New-Object System.Drawing.Size(320, 95)
+$customToolTip.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
+$customToolTip.Visible = $false
+$customToolTip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+
+$toolTipLabel = New-Object System.Windows.Forms.Label
+$toolTipLabel.Location = New-Object System.Drawing.Point(8, 8)
+$toolTipLabel.Size = New-Object System.Drawing.Size(302, 78)
+$toolTipLabel.ForeColor = [System.Drawing.Color]::FromArgb(220, 225, 235)
+$toolTipLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$customToolTip.Controls.Add($toolTipLabel)
+$form.Controls.Add($customToolTip)
+$customToolTip.BringToFront()
+
 
 # Cabeçalho interno
 $header = New-Object System.Windows.Forms.Panel
@@ -911,7 +922,7 @@ $actions = [ordered]@{
     }
 }
 
-# Dicionário de tooltips para os pacotes
+# Textos de Tooltip para os pacotes
 $packageTooltips = @{
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
@@ -953,8 +964,29 @@ foreach ($name in $actions.Keys) {
         $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
     }
 
+    # Atribuição do tooltip escuro personalizado nos botões com pacotes
     if ($packageTooltips.ContainsKey($name)) {
-        $toolTip.SetToolTip($btn, $packageTooltips[$name])
+        $tipText = $packageTooltips[$name]
+        $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg; Tip = $tipText }
+        
+        $btn.Add_MouseEnter({
+            $this.BackColor = $this.Tag.CorHover
+            if ($this.Tag.Tip) {
+                $toolTipLabel.Text = $this.Tag.Tip
+                $pt = $form.PointToClient([System.Windows.Forms.Cursor]::Position)
+                $customToolTip.Location = New-Object System.Drawing.Point(($pt.X + 15), ($pt.Y + 15))
+                $customToolTip.Visible = $true
+                $customToolTip.BringToFront()
+            }
+        })
+        $btn.Add_MouseLeave({
+            $this.BackColor = $this.Tag.CorNormal
+            $customToolTip.Visible = $false
+        })
+    } else {
+        $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg; Tip = $null }
+        $btn.Add_MouseEnter({ $this.BackColor = $this.Tag.CorHover })
+        $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.CorNormal })
     }
 
     if ($actionNumber -le 6) {
@@ -974,10 +1006,6 @@ foreach ($name in $actions.Keys) {
 
     $btn.BackColor = $baseBg
     $btn.ForeColor = $baseFg
-    $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg }
-    
-    $btn.Add_MouseEnter({ $this.BackColor = $this.Tag.CorHover })
-    $btn.Add_MouseLeave({ $this.BackColor = $this.Tag.CorNormal })
     $btn.Add_Click({ try { & $this.Tag.Acao } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
     
     $form.Controls.Add($lblNum)
@@ -1085,7 +1113,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.40"
+$versaoLabel.Text = "v0.41"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
