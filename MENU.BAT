@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁfICA (COMPACTA E PROPORCIONAL)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (DARK MODE NA BARRA DE TÍTULOS)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -694,6 +694,27 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
+# Código nativo para forçar o Modo Escuro na barra de títulos da janela (Windows 10/11)
+$darkModeCode = @'
+using System;
+using System.Runtime.InteropServices;
+public class WindowTheme {
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+    public static void ApplyDarkMode(IntPtr hwnd) {
+        int useImmersiveDarkMode = 1;
+        // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        DwmSetWindowAttribute(hwnd, 20, ref useImmersiveDarkMode, sizeof(int));
+    }
+}
+'@
+Add-Type -TypeDefinition $darkModeCode -ErrorAction SilentlyContinue
+
+# Aplica o tema escuro na barra de título assim que a janela carregar
+$form.Add_Shown({
+    try { [WindowTheme]::ApplyDarkMode($form.Handle) } catch {}
+})
+
 # Componente de Tooltip
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.AutoPopDelay = 10000
@@ -702,7 +723,7 @@ $toolTip.ReshowDelay = 100
 $toolTip.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 52)
 $toolTip.ForeColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 
-# Cabeçalho da Janela
+# Cabeçalho interno da Janela
 $header = New-Object System.Windows.Forms.Panel
 $header.Location = New-Object System.Drawing.Point(0, 0)
 $header.Size = New-Object System.Drawing.Size(1120, 80)
@@ -881,14 +902,12 @@ foreach ($name in $actions.Keys) {
     if ($actionNumber -le 6) {
         $column = ($actionNumber - 1) % 2
         $row = [int][Math]::Floor(($actionNumber - 1) / 2)
-        # Botões individuais mais compactos e proporcionais
         $btn.Size = New-Object System.Drawing.Size(272, 45)
         $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (128 + ($row * 53)))
         $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (141 + ($row * 53)))
     } else {
         $colIdx = ($actionNumber - 7) % 3
         $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
-        # Botões de pacotes e manutenção mais compactos
         $btn.Size = New-Object System.Drawing.Size(176, 45)
         $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 205)), (432 + ($rowIdx * 53)))
         $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 205)), (445 + ($rowIdx * 53)))
@@ -1008,7 +1027,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 650)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.36"
+$versaoLabel.Text = "v0.37"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
