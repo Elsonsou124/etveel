@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (VISUAL PREMIUM + TOOLTIPS)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁfICA (COMPACTA E PROPORCIONAL)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -694,7 +694,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
-# Componente de Tooltip (Dicas ao passar o mouse)
+# Componente de Tooltip
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.AutoPopDelay = 10000
 $toolTip.InitialDelay = 400
@@ -760,7 +760,7 @@ $individualTitle.Text = "AÇÕES INDIVIDUAIS"
 $individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $individualTitle.AutoSize = $true
-$individualTitle.Location = New-Object System.Drawing.Point(24, 105)
+$individualTitle.Location = New-Object System.Drawing.Point(24, 100)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
@@ -768,7 +768,7 @@ $bundleTitle.Text = "PACOTES & MANUTENÇÃO"
 $bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $bundleTitle.AutoSize = $true
-$bundleTitle.Location = New-Object System.Drawing.Point(24, 432)
+$bundleTitle.Location = New-Object System.Drawing.Point(24, 405)
 $form.Controls.Add($bundleTitle)
 
 
@@ -831,7 +831,7 @@ $actions = [ordered]@{
     }
 }
 
-# Dicionário de descrições detalhadas para os tooltips dos pacotes
+# Dicionário de tooltips para os pacotes
 $packageTooltips = @{
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
@@ -845,7 +845,7 @@ $actionNumber = 0
 foreach ($name in $actions.Keys) {
     $actionNumber++
 
-    # Número indicador externo ao botão (Crachá lateral)
+    # Número indicador externo lateral (Crachá)
     $lblNum = New-Object System.Windows.Forms.Label
     $lblNum.Text = ("{0:D2}" -f $actionNumber)
     $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
@@ -856,7 +856,7 @@ foreach ($name in $actions.Keys) {
     $btn.Text = $name
     $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btn.FlatAppearance.BorderSize = 0
-    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
+    $btn.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
     $btn.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     $btn.Cursor = [System.Windows.Forms.Cursors]::Hand
     
@@ -874,7 +874,6 @@ foreach ($name in $actions.Keys) {
         $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
     }
 
-    # Atribuir Tooltip se houver descrição cadastrada
     if ($packageTooltips.ContainsKey($name)) {
         $toolTip.SetToolTip($btn, $packageTooltips[$name])
     }
@@ -882,15 +881,17 @@ foreach ($name in $actions.Keys) {
     if ($actionNumber -le 6) {
         $column = ($actionNumber - 1) % 2
         $row = [int][Math]::Floor(($actionNumber - 1) / 2)
-        $btn.Size = New-Object System.Drawing.Size(268, 82)
-        $btn.Location = New-Object System.Drawing.Point((48 + ($column * 310)), (135 + ($row * 94)))
-        $lblNum.Location = New-Object System.Drawing.Point((18 + ($column * 310)), (165 + ($row * 94)))
+        # Botões individuais mais compactos e proporcionais
+        $btn.Size = New-Object System.Drawing.Size(272, 45)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (128 + ($row * 53)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (141 + ($row * 53)))
     } else {
         $colIdx = ($actionNumber - 7) % 3
         $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
-        $btn.Size = New-Object System.Drawing.Size(176, 52)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 208)), (462 + ($rowIdx * 60)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 208)), (478 + ($rowIdx * 60)))
+        # Botões de pacotes e manutenção mais compactos
+        $btn.Size = New-Object System.Drawing.Size(176, 45)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 205)), (432 + ($rowIdx * 53)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 205)), (445 + ($rowIdx * 53)))
         $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     }
 
@@ -916,7 +917,7 @@ $logTitle.Text = "CONSOLE DE TAREFAS"
 $logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $logTitle.AutoSize = $true
-$logTitle.Location = New-Object System.Drawing.Point(680, 105)
+$logTitle.Location = New-Object System.Drawing.Point(680, 100)
 $form.Controls.Add($logTitle)
 
 $lblStatus = New-Object System.Windows.Forms.Label
@@ -924,12 +925,12 @@ $lblStatus.Text = "Aguardando ação..."
 $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
 $lblStatus.AutoSize = $true
-$lblStatus.Location = New-Object System.Drawing.Point(680, 135)
+$lblStatus.Location = New-Object System.Drawing.Point(680, 128)
 $form.Controls.Add($lblStatus)
 
 $progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(680, 160)
-$progressBar.Size = New-Object System.Drawing.Size(416, 12)
+$progressBar.Location = New-Object System.Drawing.Point(680, 155)
+$progressBar.Size = New-Object System.Drawing.Size(416, 10)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $form.Controls.Add($progressBar)
 
@@ -937,8 +938,8 @@ $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(680, 185)
-$logBox.Size = New-Object System.Drawing.Size(416, 440)
+$logBox.Location = New-Object System.Drawing.Point(680, 178)
+$logBox.Size = New-Object System.Drawing.Size(416, 450)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
@@ -1007,7 +1008,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 650)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.35"
+$versaoLabel.Text = "v0.36"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
