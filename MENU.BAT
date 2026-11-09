@@ -645,15 +645,15 @@ function Start-Task($titulo, $script, $total = 1) {
     $global:etapaAtual = 0
 
     if ($total -gt 1) {
-        $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-        $progressBar.Minimum = 0
-        $progressBar.Maximum = $total
-        $progressBar.Value = 0
+        $global:progressMax = $total
+        $global:progressVal = 0
+        Update-CustomProgress 0
         $lblStatus.Text = "Instalando lote: $titulo (0/$total)..."
         $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 180)
     } else {
-        $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-        $progressBar.MarqueeAnimationSpeed = 30
+        $global:progressMax = 100
+        $global:progressVal = 50
+        Update-CustomProgress 50
         $qtdFila = $global:tasks.Count
         if ($qtdFila -gt 1) {
             $lblStatus.Text = "Instalando: $titulo (Fila: $qtdFila tarefas)..."
@@ -779,14 +779,14 @@ $customTitleBar.Controls.Add($btnMinimize)
 # SISTEMA DE TOOLTIP PERSONALIZADO (100% ESCURO)
 # =====================================================================
 $customToolTip = New-Object System.Windows.Forms.Panel
-$customToolTip.Size = New-Object System.Drawing.Size(340, 110)
+$customToolTip.Size = New-Object System.Drawing.Size(340, 125)
 $customToolTip.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
 $customToolTip.Visible = $false
 $customToolTip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
 $toolTipLabel = New-Object System.Windows.Forms.Label
 $toolTipLabel.Location = New-Object System.Drawing.Point(8, 8)
-$toolTipLabel.Size = New-Object System.Drawing.Size(322, 92)
+$toolTipLabel.Size = New-Object System.Drawing.Size(322, 108)
 $toolTipLabel.ForeColor = [System.Drawing.Color]::FromArgb(220, 225, 235)
 $toolTipLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $customToolTip.Controls.Add($toolTipLabel)
@@ -922,7 +922,7 @@ $actions = [ordered]@{
     }
 }
 
-# Textos de Tooltip detalhados restaurados para os pacotes
+# Textos detalhados para os tooltips dos pacotes
 $packageTooltips = @{
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
@@ -964,7 +964,6 @@ foreach ($name in $actions.Keys) {
         $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
     }
 
-    # Atribuição do tooltip escuro personalizado nos botões
     if ($packageTooltips.ContainsKey($name)) {
         $tipText = $packageTooltips[$name]
         $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg; Tip = $tipText }
@@ -1014,7 +1013,7 @@ foreach ($name in $actions.Keys) {
 
 
 # =====================================================================
-# SEÇÃO 8: PAINEL DE STATUS E LOGS (ESTILO VS CODE)
+# SEÇÃO 8: PAINEL DE STATUS E LOGS (COM BARRA DE PROGRESSO 100% CUSTOMIZADA ESCURA)
 # =====================================================================
 
 $logTitle = New-Object System.Windows.Forms.Label
@@ -1033,11 +1032,29 @@ $lblStatus.AutoSize = $true
 $lblStatus.Location = New-Object System.Drawing.Point(680, 142)
 $form.Controls.Add($lblStatus)
 
-$progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(680, 170)
-$progressBar.Size = New-Object System.Drawing.Size(416, 8)
-$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-$form.Controls.Add($progressBar)
+# Barra de Progresso Customizada (Fundo Grafite Escuro + Barra Azul Elétrica)
+$progressBarBg = New-Object System.Windows.Forms.Panel
+$progressBarBg.Location = New-Object System.Drawing.Point(680, 170)
+$progressBarBg.Size = New-Object System.Drawing.Size(416, 8)
+$progressBarBg.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
+$form.Controls.Add($progressBarBg)
+
+$progressBarFill = New-Object System.Windows.Forms.Panel
+$progressBarFill.Location = New-Object System.Drawing.Point(0, 0)
+$progressBarFill.Size = New-Object System.Drawing.Size(0, 8)
+$progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 255)
+$progressBarBg.Controls.Add($progressBarFill)
+
+$global:progressMax = 100
+$global:progressVal = 0
+
+function Update-CustomProgress($val) {
+    $global:progressVal = [Math]::Max(0, [Math]::Min($val, $global:progressMax))
+    if ($global:progressMax -gt 0) {
+        $newWidth = [int](($global:progressVal / $global:progressMax) * 416)
+        $progressBarFill.Width = $newWidth
+    }
+}
 
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
@@ -1063,9 +1080,10 @@ function Ler-Novas($t) {
         if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
             Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
             $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
-            if ($global:totalEtapas -gt 1) { 
-                $progressBar.Value = [Math]::Min([int]$matches[1], $progressBar.Maximum) 
-            }
+            $atual = [int]$matches[1]
+            $totalEtapas = [int]$matches[2]
+            $global:progressMax = $totalEtapas
+            Update-CustomProgress $atual
         }
         elseif ($l -match '^##OK (.+)$')   { $t.Ok++;   Log ("  [OK]   " + $matches[1] + " instalado") }
         elseif ($l -match '^##JA (.+)$')   { $t.Ja++;   Log ("  [JA]   " + $matches[1] + " ja estava instalado") }
@@ -1087,8 +1105,7 @@ $timer.Add_Tick({
             if ($global:tasks.Count -gt 0) {
                 $lblStatus.Text = "Ainda em andamento: " + $global:tasks[0].Nome + " (" + $global:tasks.Count + " na fila)"
             } else {
-                $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
-                $progressBar.Value = $progressBar.Maximum
+                Update-CustomProgress $global:progressMax
                 if ($t.Erro -gt 0) {
                     $lblStatus.Text = "Concluido com erros - veja o log"
                     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 90, 90)
@@ -1115,7 +1132,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.42"
+$versaoLabel.Text = "v0.43"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
