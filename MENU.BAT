@@ -383,7 +383,7 @@ function Get-PackageVerifiedDownload {
                     if ($LASTEXITCODE -ne 0) { throw 'curl falhou' }
                 }
             }
-            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -gt 1000000) { throw 'Arquivo incompleto' }
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) { throw 'Arquivo incompleto' }
             if ($Sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $Sha256) {
                 throw 'Hash invalido'
             }
@@ -477,7 +477,6 @@ function Install-AppFallback {
     $wingetCode = 1
     $wingetPath = $null
 
-    # Garante que o WinGet esta presente no sistema antes de rodar
     Ensure-WinGetInstalled
 
     if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner') -and (Test-MenuPackageInstalled -Id $Id)) {
@@ -735,7 +734,7 @@ $lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
 $splashPanel.Controls.Add($lblSplashSub)
 
 $lblSplashVer = New-Object System.Windows.Forms.Label
-$lblSplashVer.Text = "Versão 0.46 — Inicializando Ambiente..."
+$lblSplashVer.Text = "Versão 0.47 — Inicializando Ambiente..."
 $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
 $lblSplashVer.AutoSize = $true
@@ -1097,12 +1096,11 @@ foreach ($name in $actions.Keys) {
         $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (140 + ($row * 48)))
         $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (152 + ($row * 48)))
     } else {
-        $colIdx = ($actionNumber - 7) % 3
-        $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
-        $btn.Size = New-Object System.Drawing.Size(176, 42)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 205)), (410 + ($rowIdx * 48)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 205)), (422 + ($rowIdx * 48)))
-        $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+        $colIdx = ($actionNumber - 7) % 2
+        $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 2)
+        $btn.Size = New-Object System.Drawing.Size(272, 42)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 305)), (410 + ($rowIdx * 48)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 305)), (422 + ($rowIdx * 48)))
     }
 
     $btn.BackColor = $baseBg
@@ -1263,7 +1261,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.46"
+$versaoLabel.Text = "v0.47"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
