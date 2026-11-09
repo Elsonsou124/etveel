@@ -779,14 +779,14 @@ $customTitleBar.Controls.Add($btnMinimize)
 # SISTEMA DE TOOLTIP PERSONALIZADO (100% ESCURO)
 # =====================================================================
 $customToolTip = New-Object System.Windows.Forms.Panel
-$customToolTip.Size = New-Object System.Drawing.Size(320, 95)
+$customToolTip.Size = New-Object System.Drawing.Size(340, 110)
 $customToolTip.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
 $customToolTip.Visible = $false
 $customToolTip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
 $toolTipLabel = New-Object System.Windows.Forms.Label
 $toolTipLabel.Location = New-Object System.Drawing.Point(8, 8)
-$toolTipLabel.Size = New-Object System.Drawing.Size(302, 78)
+$toolTipLabel.Size = New-Object System.Drawing.Size(322, 92)
 $toolTipLabel.ForeColor = [System.Drawing.Color]::FromArgb(220, 225, 235)
 $toolTipLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $customToolTip.Controls.Add($toolTipLabel)
@@ -922,12 +922,12 @@ $actions = [ordered]@{
     }
 }
 
-# Textos de Tooltip para os pacotes
+# Textos de Tooltip detalhados restaurados para os pacotes
 $packageTooltips = @{
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
     "INSTALAR TUDO + Office"      = "Pacote Completo Avançado:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• MSI Afterburner`n• Microsoft Office (com atalhos)";
-    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA, AMD ou Intel)";
+    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
     "Atualizar Windows"           = "Varre, baixa e instala todas as atualizações de software pendentes do Windows Update.";
     "Atualizar Drivers"           = "Busca e instala atualizações de drivers oficiais disponíveis via Windows Update."
 }
@@ -964,7 +964,7 @@ foreach ($name in $actions.Keys) {
         $hoverBg = [System.Drawing.Color]::FromArgb(70, 160, 110)
     }
 
-    # Atribuição do tooltip escuro personalizado nos botões com pacotes
+    # Atribuição do tooltip escuro personalizado nos botões
     if ($packageTooltips.ContainsKey($name)) {
         $tipText = $packageTooltips[$name]
         $btn.Tag = @{ Acao = $actions[$name]; CorNormal = $baseBg; CorHover = $hoverBg; Tip = $tipText }
@@ -1063,7 +1063,9 @@ function Ler-Novas($t) {
         if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
             Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
             $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
-            if ($global:totalEtapas -gt 1) { $progressBar.Value = [Math]::Min([int]$matches[1] - 1, $progressBar.Maximum) }
+            if ($global:totalEtapas -gt 1) { 
+                $progressBar.Value = [Math]::Min([int]$matches[1], $progressBar.Maximum) 
+            }
         }
         elseif ($l -match '^##OK (.+)$')   { $t.Ok++;   Log ("  [OK]   " + $matches[1] + " instalado") }
         elseif ($l -match '^##JA (.+)$')   { $t.Ja++;   Log ("  [JA]   " + $matches[1] + " ja estava instalado") }
@@ -1113,7 +1115,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.41"
+$versaoLabel.Text = "v0.42"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
