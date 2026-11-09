@@ -341,7 +341,7 @@ function Install-AdobeReaderDirect {
 
 function Get-PackageVerifiedDownload {
     param([string]$Uri, [string]$Name, [string]$Extension, [string]$Sha256)
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $path = Join-Path $env:TEMP ('Setup_' + [guid]::NewGuid().ToString('N') + '.' + $Extension)
     foreach ($method in @('PowerShell','BITS','curl')) {
         try {
@@ -605,7 +605,7 @@ try {
     $exe = Get-OfficeInstaller
 '@ + "`r`n" + $officeWaitAndClose + "`r`n" + @'
     if ($global:LASTEXITCODE -eq 3010) { $global:LASTEXITCODE = 0 }
-    if ($global:LASTEXITCODE -eq 0) {
+    if ($global:LASTEXITCODE -0) {
 '@ + "`r`n" + $officeShortcuts + "`r`n" + @'
     }
 } catch {
@@ -677,7 +677,7 @@ function Lote($passos) { "`$global:falhou = 0; " + ($passos -join "; ") + "; `$g
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (SEM BORDA + BARRA PERSONALIZADA)
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA (SEM BORDA REAL + ESPAÇAMENTO AJUSTADO)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -686,19 +686,20 @@ $form = New-Object System.Windows.Forms.Form
 $form.Icon = $programIcon
 $form.ShowIcon = $true
 $form.Text = "Assistente de Formatação Pro"
-$form.ClientSize = New-Object System.Drawing.Size(1120, 720)
+$form.ClientSize = New-Object System.Drawing.Size(1120, 690)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None # Remove barra padrão
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedToolWindow
 $form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.ControlBox = $false
 $form.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
 $form.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
-# Permite arrastar a janela clicando na barra de topo personalizada
 $global:dragging = $false
 $global:dragCursorPoint = $null
 
-# Barra de título personalizada (substitui a nativa do Windows)
+# Barra de título personalizada
 $customTitleBar = New-Object System.Windows.Forms.Panel
 $customTitleBar.Location = New-Object System.Drawing.Point(0, 0)
 $customTitleBar.Size = New-Object System.Drawing.Size(1120, 35)
@@ -720,7 +721,6 @@ $customTitleBar.Add_MouseMove({
 })
 $customTitleBar.Add_MouseUp({ $global:dragging = $false })
 
-# Título na barra personalizada
 $lblWindowTitle = New-Object System.Windows.Forms.Label
 $lblWindowTitle.Text = "  Assistente de Formatação Pro"
 $lblWindowTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
@@ -732,7 +732,7 @@ $lblWindowTitle.Add_MouseDown({ $customTitleBar.InvokeMember("OnMouseDown", $_) 
 $lblWindowTitle.Add_MouseMove({ $customTitleBar.InvokeMember("OnMouseMove", $_) })
 $lblWindowTitle.Add_MouseUp({ $customTitleBar.InvokeMember("OnMouseUp", $_) })
 
-# Botões de Controle do Windows (Minimizar, Maximizar/Restaurar, Fechar)
+# Botões de Controle personalizados (Fechar, Maximizar, Minimizar)
 $btnClose = New-Object System.Windows.Forms.Button
 $btnClose.Text = "✕"
 $btnClose.Size = New-Object System.Drawing.Size(45, 35)
@@ -804,19 +804,19 @@ $toolTip.ReshowDelay = 100
 $toolTip.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 52)
 $toolTip.ForeColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 
-# Cabeçalho interno da Janela (Logo abaixo da barra customizada)
+# Cabeçalho interno
 $header = New-Object System.Windows.Forms.Panel
 $header.Location = New-Object System.Drawing.Point(0, 35)
-$header.Size = New-Object System.Drawing.Size(1120, 75)
+$header.Size = New-Object System.Drawing.Size(1120, 70)
 $header.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $form.Controls.Add($header)
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
-$title.Font = New-Object System.Drawing.Font("Segoe UI", 15, [System.Drawing.FontStyle]::Bold)
+$title.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
 $title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(24, 12)
+$title.Location = New-Object System.Drawing.Point(24, 10)
 $header.Controls.Add($title)
 
 $subTitle = New-Object System.Windows.Forms.Label
@@ -824,15 +824,14 @@ $subTitle.Text = "Central de Automação e Pós-Instalação"
 $subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $subTitle.ForeColor = [System.Drawing.Color]::FromArgb(150, 160, 175)
 $subTitle.AutoSize = $true
-$subTitle.Location = New-Object System.Drawing.Point(28, 44)
+$subTitle.Location = New-Object System.Drawing.Point(28, 38)
 $header.Controls.Add($subTitle)
 
 # Botão Sair
 $sair = New-Object System.Windows.Forms.Button
 $sair.Text = "Encerrar Ferramenta"
-$sair.Size = New-Object System.Drawing.Size(170, 45)
-$sair.Location = New-Object System.Drawing.Point(24, 650)
-$sair.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
+$sair.Size = New-Object System.Drawing.Size(170, 42)
+$sair.Location = New-Object System.Drawing.Point(24, 625)
 $form.Controls.Add($sair)
 $sair.BringToFront()
 $sair.FlatStyle = "Flat"
@@ -856,13 +855,13 @@ $sair.Add_Click({
     $form.Close() 
 })
 
-# Rótulos das Seções
+# Rótulos das Seções (Espaçamento corrigido e compacto)
 $individualTitle = New-Object System.Windows.Forms.Label
 $individualTitle.Text = "AÇÕES INDIVIDUAIS"
 $individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $individualTitle.AutoSize = $true
-$individualTitle.Location = New-Object System.Drawing.Point(24, 125)
+$individualTitle.Location = New-Object System.Drawing.Point(24, 115)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
@@ -870,7 +869,7 @@ $bundleTitle.Text = "PACOTES & MANUTENÇÃO"
 $bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $bundleTitle.AutoSize = $true
-$bundleTitle.Location = New-Object System.Drawing.Point(24, 420)
+$bundleTitle.Location = New-Object System.Drawing.Point(24, 385)
 $form.Controls.Add($bundleTitle)
 
 
@@ -982,15 +981,15 @@ foreach ($name in $actions.Keys) {
     if ($actionNumber -le 6) {
         $column = ($actionNumber - 1) % 2
         $row = [int][Math]::Floor(($actionNumber - 1) / 2)
-        $btn.Size = New-Object System.Drawing.Size(272, 45)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (152 + ($row * 53)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (165 + ($row * 53)))
+        $btn.Size = New-Object System.Drawing.Size(272, 42)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (140 + ($row * 48)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (152 + ($row * 48)))
     } else {
         $colIdx = ($actionNumber - 7) % 3
         $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
-        $btn.Size = New-Object System.Drawing.Size(176, 45)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 205)), (445 + ($rowIdx * 53)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 205)), (458 + ($rowIdx * 53)))
+        $btn.Size = New-Object System.Drawing.Size(176, 42)
+        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 205)), (410 + ($rowIdx * 48)))
+        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 205)), (422 + ($rowIdx * 48)))
         $btn.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     }
 
@@ -1016,7 +1015,7 @@ $logTitle.Text = "CONSOLE DE TAREFAS"
 $logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $logTitle.AutoSize = $true
-$logTitle.Location = New-Object System.Drawing.Point(680, 125)
+$logTitle.Location = New-Object System.Drawing.Point(680, 115)
 $form.Controls.Add($logTitle)
 
 $lblStatus = New-Object System.Windows.Forms.Label
@@ -1024,12 +1023,12 @@ $lblStatus.Text = "Aguardando ação..."
 $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
 $lblStatus.AutoSize = $true
-$lblStatus.Location = New-Object System.Drawing.Point(680, 152)
+$lblStatus.Location = New-Object System.Drawing.Point(680, 142)
 $form.Controls.Add($lblStatus)
 
 $progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(680, 180)
-$progressBar.Size = New-Object System.Drawing.Size(416, 10)
+$progressBar.Location = New-Object System.Drawing.Point(680, 170)
+$progressBar.Size = New-Object System.Drawing.Size(416, 8)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Blocks
 $form.Controls.Add($progressBar)
 
@@ -1037,8 +1036,8 @@ $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
 $logBox.ScrollBars = "Vertical"
-$logBox.Location = New-Object System.Drawing.Point(680, 202)
-$logBox.Size = New-Object System.Drawing.Size(416, 430)
+$logBox.Location = New-Object System.Drawing.Point(680, 190)
+$logBox.Size = New-Object System.Drawing.Size(416, 420)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $logBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
 $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
@@ -1103,15 +1102,15 @@ $watermark.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(680, 650)
+$watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.38"
+$versaoLabel.Text = "v0.39"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
-$versaoLabel.Location = New-Object System.Drawing.Point(1055, 650)
+$versaoLabel.Location = New-Object System.Drawing.Point(1055, 625)
 $form.Controls.Add($versaoLabel)
 
 
