@@ -820,7 +820,7 @@ $customTitleBar.Controls.Add($lblWindowTitle)
 
 $lblWindowTitle.Add_MouseDown({
     if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $global:mouseOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
+        $global:mouseOffset = New-Object System.Drawing.Point(($_.X + $this.Location.X), ($_.Y + $this.Location.Y))
     }
 })
 $lblWindowTitle.Add_MouseMove({
@@ -1122,7 +1122,7 @@ $modalDrag = {
 # 13. Lojas de Jogos
 $lblNum13 = New-Object System.Windows.Forms.Label
 $lblNum13.Text = "13"
-$lblNum13.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblNum13.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
 $lblNum13.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
 $lblNum13.AutoSize = $true
 $lblNum13.Location = New-Object System.Drawing.Point(16, 566)
@@ -1151,10 +1151,10 @@ $btnOpenStoresModal.Add_Click({
 
     $modal.Add_MouseDown($modalDrag)
     $modalMove = {
-        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $mousePos = [System.Windows.Forms.Control]::MousePosition
-            $mousePos.Offset(-$global:modalOffset.X, -$global:modalOffset.Y)
-            $modal.Location = $mousePos
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $global:modalOffset) {
+            $frm = $this.FindForm()
+            $cur = [System.Windows.Forms.Cursor]::Position
+            $frm.Location = New-Object System.Drawing.Point(($cur.X - $global:modalOffset.X), ($cur.Y - $global:modalOffset.Y))
         }
     }
     $modal.Add_MouseMove($modalMove)
@@ -1175,13 +1175,13 @@ $btnOpenStoresModal.Add_Click({
 
     $lblModalTitle = New-Object System.Windows.Forms.Label
     $lblModalTitle.Text = "SELECIONE AS LOJAS PARA INSTALAÇÃO:"
-    $lblModalTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+    $lblModalTitle.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]9.5), ([System.Drawing.FontStyle]::Bold)
     $lblModalTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
     $lblModalTitle.AutoSize = $true
     $lblModalTitle.Location = New-Object System.Drawing.Point(15, 15)
     $lblModalTitle.Add_MouseDown({
         if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $global:modalOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
+            $global:modalOffset = New-Object System.Drawing.Point(($_.X + $this.Location.X), ($_.Y + $this.Location.Y))
         }
     })
     $lblModalTitle.Add_MouseMove($modalMove)
@@ -1190,7 +1190,7 @@ $btnOpenStoresModal.Add_Click({
     $chkSelectAll = New-Object System.Windows.Forms.CheckBox
     $chkSelectAll.Text = "Marcar / Desmarcar Todos"
     $chkSelectAll.AutoSize = $true
-    $chkSelectAll.Location = New-Object System.Drawing.Point(20, 45)
+    $chkSelectAll.Location = New-Object System.Drawing.Point((430 - $chkSelectAll.PreferredSize.Width), 322)
     $chkSelectAll.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
     $chkSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $chkSelectAll.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -1236,7 +1236,7 @@ $btnOpenStoresModal.Add_Click({
 
         $lblNumModal = New-Object System.Windows.Forms.Label
         $lblNumModal.Text = ("{0:D2}" -f $idx)
-        $lblNumModal.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+        $lblNumModal.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
         $lblNumModal.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
         $lblNumModal.AutoSize = $true
         $lblNumModal.Location = New-Object System.Drawing.Point(20, (88 + (($idx - 1) * 38)))
@@ -1317,7 +1317,7 @@ $form.Controls.Add($btnOpenStoresModal)
 # 14. O que deseja fazer no PC? (Instalação Personalizada Total)
 $lblNum14 = New-Object System.Windows.Forms.Label
 $lblNum14.Text = "14"
-$lblNum14.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblNum14.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
 $lblNum14.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
 $lblNum14.AutoSize = $true
 $lblNum14.Location = New-Object System.Drawing.Point(321, 566)
@@ -1346,10 +1346,10 @@ $btnWhatToDo.Add_Click({
 
     $modalPC.Add_MouseDown($modalDrag)
     $modalMovePC = {
-        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $mousePos = [System.Windows.Forms.Control]::MousePosition
-            $mousePos.Offset(-$global:modalOffset.X, -$global:modalOffset.Y)
-            $modalPC.Location = $mousePos
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $global:modalOffset) {
+            $frm = $this.FindForm()
+            $cur = [System.Windows.Forms.Cursor]::Position
+            $frm.Location = New-Object System.Drawing.Point(($cur.X - $global:modalOffset.X), ($cur.Y - $global:modalOffset.Y))
         }
     }
     $modalPC.Add_MouseMove($modalMovePC)
@@ -1371,13 +1371,13 @@ $btnWhatToDo.Add_Click({
     $lblModalTitlePC = New-Object System.Windows.Forms.Label
     $lblModalTitlePC.Text = "INSTALAÇÃO PERSONALIZADA TOTAL:"
     # CORREÇÃO DA FONTE: Criada com tamanho e estilo de forma segura
-    $lblModalTitlePC.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+    $lblModalTitlePC.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]9.5), ([System.Drawing.FontStyle]::Bold)
     $lblModalTitlePC.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
     $lblModalTitlePC.AutoSize = $true
     $lblModalTitlePC.Location = New-Object System.Drawing.Point(15, 15)
     $lblModalTitlePC.Add_MouseDown({
         if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $global:modalOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
+            $global:modalOffset = New-Object System.Drawing.Point(($_.X + $this.Location.X), ($_.Y + $this.Location.Y))
         }
     })
     $lblModalTitlePC.Add_MouseMove($modalMovePC)
@@ -1386,7 +1386,7 @@ $btnWhatToDo.Add_Click({
     $chkSelectAllPC = New-Object System.Windows.Forms.CheckBox
     $chkSelectAllPC.Text = "Marcar / Desmarcar Todos"
     $chkSelectAllPC.AutoSize = $true
-    $chkSelectAllPC.Location = New-Object System.Drawing.Point(20, 45)
+    $chkSelectAllPC.Location = New-Object System.Drawing.Point((430 - $chkSelectAllPC.PreferredSize.Width), 462)
     $chkSelectAllPC.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
     $chkSelectAllPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $chkSelectAllPC.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -1434,7 +1434,7 @@ $btnWhatToDo.Add_Click({
 
         $lblNumModalPC = New-Object System.Windows.Forms.Label
         $lblNumModalPC.Text = ("{0:D2}" -f $idxPC)
-        $lblNumModalPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+        $lblNumModalPC.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
         $lblNumModalPC.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
         $lblNumModalPC.AutoSize = $true
         $lblNumModalPC.Location = New-Object System.Drawing.Point(20, (88 + (($idxPC - 1) * 48)))
@@ -1443,7 +1443,7 @@ $btnWhatToDo.Add_Click({
         $chkPC = New-Object System.Windows.Forms.CheckBox
         $chkPC.Text = $itemName
         # CORREÇÃO DA FONTE: Criada corretamente com os parâmetros esperados pelo .NET
-        $chkPC.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::SemiBold)
+        $chkPC.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
         $chkPC.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
         $chkPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
         $chkPC.UseVisualStyleBackColor = $false
@@ -1476,12 +1476,12 @@ $btnWhatToDo.Add_Click({
     $btnConfirmPC = New-Object System.Windows.Forms.Button
     $btnConfirmPC.Text = "Instalar Recursos Selecionados"
     $btnConfirmPC.Size = New-Object System.Drawing.Size(400, 42)
-    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 470)
+    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 488)
     $btnConfirmPC.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirmPC.FlatAppearance.BorderSize = 0
     $btnConfirmPC.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
     $btnConfirmPC.ForeColor = [System.Drawing.Color]::White
-    $btnConfirmPC.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::SemiBold)
+    $btnConfirmPC.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
     $btnConfirmPC.Cursor = [System.Windows.Forms.Cursors]::Hand
     $btnConfirmPC.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(20, 140, 240) })
     $btnConfirmPC.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215) })
