@@ -734,14 +734,13 @@ $lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
 $splashPanel.Controls.Add($lblSplashSub)
 
 $lblSplashVer = New-Object System.Windows.Forms.Label
-$lblSplashVer.Text = "Versão 0.48 — Inicializando Ambiente..."
+$lblSplashVer.Text = "Versão 0.62 — Inicializando Ambiente..."
 $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
 $lblSplashVer.AutoSize = $true
 $lblSplashVer.Location = New-Object System.Drawing.Point(135, 125)
 $splashPanel.Controls.Add($lblSplashVer)
 
-# Barra de carregamento decorativa na Splash Screen
 $splashBarBg = New-Object System.Windows.Forms.Panel
 $splashBarBg.Location = New-Object System.Drawing.Point(50, 170)
 $splashBarBg.Size = New-Object System.Drawing.Size(360, 4)
@@ -760,16 +759,10 @@ $global:splashCount = 0
 
 $splashTimer.Add_Tick({
     $global:splashCount++
-    if ($splash.Opacity -lt 1.0) {
-        $splash.Opacity += 0.08
-    }
+    if ($splash.Opacity -lt 1.0) { $splash.Opacity += 0.08 }
     $currentWidth = [int](($global:splashCount / 75) * 360)
     if ($currentWidth -le 360) { $splashBarFill.Width = $currentWidth }
-
-    if ($global:splashCount -gt 75) {
-        $splashTimer.Stop()
-        $splash.Close()
-    }
+    if ($global:splashCount -gt 75) { $splashTimer.Stop(); $splash.Close() }
 })
 
 $splash.Add_Shown({ $splashTimer.Start() })
@@ -798,7 +791,6 @@ $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
 $global:mouseOffset = $null
 
-# Barra de título personalizada com arrasto seguro
 $customTitleBar = New-Object System.Windows.Forms.Panel
 $customTitleBar.Location = New-Object System.Drawing.Point(0, 0)
 $customTitleBar.Size = New-Object System.Drawing.Size(1120, 35)
@@ -828,7 +820,7 @@ $customTitleBar.Controls.Add($lblWindowTitle)
 
 $lblWindowTitle.Add_MouseDown({
     if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $global:mouseOffset = New-Object System.Drawing.Point($_.X + $lblWindowTitle.Location.X, $_.Y + $lblWindowTitle.Location.Y)
+        $global:mouseOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
     }
 })
 $lblWindowTitle.Add_MouseMove({
@@ -839,7 +831,6 @@ $lblWindowTitle.Add_MouseMove({
     }
 })
 
-# Botão Fechar (X)
 $btnClose = New-Object System.Windows.Forms.Button
 $btnClose.Text = "✕"
 $btnClose.Size = New-Object System.Drawing.Size(45, 35)
@@ -866,7 +857,6 @@ $btnClose.Add_Click({
 })
 $customTitleBar.Controls.Add($btnClose)
 
-# Botão Minimizar (-)
 $btnMinimize = New-Object System.Windows.Forms.Button
 $btnMinimize.Text = "—"
 $btnMinimize.Size = New-Object System.Drawing.Size(45, 35)
@@ -983,6 +973,18 @@ $actions = [ordered]@{
     "Instalar Adobe Reader"     = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
     "Instalar Apenas o Office" = { Start-Task "Office e atalhos" (Lote @(Passo 1 1 "Office" $officeInstallAndShortcuts)) }
 
+    # Bloco de Pacotes Reorganizado Logicamente
+    "Kit Gamer" = {
+        Start-Task "Kit Gamer" (Lote @(
+            'Write-Host "##AGORA [1/6] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"',
+            'Write-Host "##AGORA [2/6] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"',
+            'Write-Host "##AGORA [3/6] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"',
+            'Write-Host "##AGORA [4/6] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"',
+            'Write-Host "##AGORA [5/6] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"',
+            (Passo 6 6 "Aplicativo de Video da Placa Mae/GPU" "Install-GamerGPUApp")
+        )) -total 6
+    }
+
     "TUDO (Sem MSI e sem Office)" = {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
             (Passo 1 3 "Chrome" (W "Google.Chrome")),
@@ -1010,17 +1012,6 @@ $actions = [ordered]@{
         )) -total 5
     }
 
-    "Kit Gamer" = {
-        Start-Task "Kit Gamer" (Lote @(
-            'Write-Host "##AGORA [1/6] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"',
-            'Write-Host "##AGORA [2/6] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"',
-            'Write-Host "##AGORA [3/6] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"',
-            'Write-Host "##AGORA [4/6] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"',
-            'Write-Host "##AGORA [5/6] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"',
-            (Passo 6 6 "Aplicativo de Video da Placa Mae/GPU" "Install-GamerGPUApp")
-        )) -total 6
-    }
-
     "Atualizar Windows" = {
         Start-Task "Atualizar Windows" (Lote @(Passo 1 1 "Windows Update" "Invoke-WindowsUpdate"))
     }
@@ -1030,12 +1021,11 @@ $actions = [ordered]@{
     }
 }
 
-# Textos detalhados para os tooltips dos pacotes
 $packageTooltips = @{
+    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
     "INSTALAR TUDO + Office"      = "Pacote Completo Avançado:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• MSI Afterburner`n• Microsoft Office (com atalhos)";
-    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
     "Atualizar Windows"           = "Varre, baixa e instala todas as atualizações de software pendentes do Windows Update.";
     "Atualizar Drivers"           = "Busca e instala atualizações de drivers oficiais disponíveis via Windows Update."
 }
@@ -1120,6 +1110,409 @@ foreach ($name in $actions.Keys) {
 
 
 # =====================================================================
+# BOTÕES 13 E 14: Lojas de Jogos e Instalação Personalizada Total
+# =====================================================================
+
+$modalDrag = {
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $global:modalOffset = New-Object System.Drawing.Point($_.X, $_.Y)
+    }
+}
+
+# 13. Lojas de Jogos
+$lblNum13 = New-Object System.Windows.Forms.Label
+$lblNum13.Text = "13"
+$lblNum13.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblNum13.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
+$lblNum13.AutoSize = $true
+$lblNum13.Location = New-Object System.Drawing.Point(16, 566)
+$form.Controls.Add($lblNum13)
+
+$btnOpenStoresModal = New-Object System.Windows.Forms.Button
+$btnOpenStoresModal.Text = "Lojas de Jogos"
+$btnOpenStoresModal.Size = New-Object System.Drawing.Size(272, 42)
+$btnOpenStoresModal.Location = New-Object System.Drawing.Point(44, 554)
+$btnOpenStoresModal.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnOpenStoresModal.FlatAppearance.BorderSize = 0
+$btnOpenStoresModal.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 55)
+$btnOpenStoresModal.ForeColor = [System.Drawing.Color]::FromArgb(0, 200, 255)
+$btnOpenStoresModal.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+$btnOpenStoresModal.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnOpenStoresModal.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(55, 60, 75); $this.ForeColor = [System.Drawing.Color]::White })
+$btnOpenStoresModal.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 55); $this.ForeColor = [System.Drawing.Color]::FromArgb(0, 200, 255) })
+
+$btnOpenStoresModal.Add_Click({
+    $modal = New-Object System.Windows.Forms.Form
+    $modal.ClientSize = New-Object System.Drawing.Size(460, 420)
+    $modal.StartPosition = "CenterParent"
+    $modal.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $modal.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+    $modal.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+
+    $modal.Add_MouseDown($modalDrag)
+    $modalMove = {
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $mousePos = [System.Windows.Forms.Control]::MousePosition
+            $mousePos.Offset(-$global:modalOffset.X, -$global:modalOffset.Y)
+            $modal.Location = $mousePos
+        }
+    }
+    $modal.Add_MouseMove($modalMove)
+
+    $btnCloseModal = New-Object System.Windows.Forms.Button
+    $btnCloseModal.Text = "✕"
+    $btnCloseModal.Size = New-Object System.Drawing.Size(40, 30)
+    $btnCloseModal.Location = New-Object System.Drawing.Point(420, 0)
+    $btnCloseModal.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnCloseModal.FlatAppearance.BorderSize = 0
+    $btnCloseModal.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+    $btnCloseModal.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $btnCloseModal.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnCloseModal.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(232, 17, 35); $this.ForeColor = [System.Drawing.Color]::White })
+    $btnCloseModal.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38); $this.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200) })
+    $btnCloseModal.Add_Click({ $modal.Close() })
+    $modal.Controls.Add($btnCloseModal)
+
+    $lblModalTitle = New-Object System.Windows.Forms.Label
+    $lblModalTitle.Text = "SELECIONE AS LOJAS PARA INSTALAÇÃO:"
+    $lblModalTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+    $lblModalTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
+    $lblModalTitle.AutoSize = $true
+    $lblModalTitle.Location = New-Object System.Drawing.Point(15, 15)
+    $lblModalTitle.Add_MouseDown({
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $global:modalOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
+        }
+    })
+    $lblModalTitle.Add_MouseMove($modalMove)
+    $modal.Controls.Add($lblModalTitle)
+
+    $chkSelectAll = New-Object System.Windows.Forms.CheckBox
+    $chkSelectAll.Text = "Marcar / Desmarcar Todos"
+    $chkSelectAll.AutoSize = $true
+    $chkSelectAll.Location = New-Object System.Drawing.Point(20, 45)
+    $chkSelectAll.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
+    $chkSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $chkSelectAll.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $modal.Controls.Add($chkSelectAll)
+
+    $modalToolTip = New-Object System.Windows.Forms.Panel
+    $modalToolTip.Size = New-Object System.Drawing.Size(300, 70)
+    $modalToolTip.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
+    $modalToolTip.Visible = $false
+    $modalToolTip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+
+    $modalToolTipLbl = New-Object System.Windows.Forms.Label
+    $modalToolTipLbl.Location = New-Object System.Drawing.Point(8, 8)
+    $modalToolTipLbl.Size = New-Object System.Drawing.Size(282, 54)
+    $modalToolTipLbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 225, 235)
+    $modalToolTipLbl.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $modalToolTip.Controls.Add($modalToolTipLbl)
+    $modal.Controls.Add($modalToolTip)
+    $modalToolTip.BringToFront()
+
+    $storeItems = [ordered]@{
+        "Steam"             = "Valve.Steam"
+        "Epic Games Store"  = "EpicGames.EpicGamesLauncher"
+        "GOG Galaxy"        = "GOG.Galaxy"
+        "EA App"            = "ElectronicArts.EAApp"
+        "Ubisoft Connect"   = "Ubisoft.Connect"
+        "Battle.net"        = "Blizzard.BattleNet"
+    }
+
+    $storeDescriptions = @{
+        "Steam"             = "Plataforma líder da Valve para jogos de PC, comunidade e biblioteca digital.";
+        "Epic Games Store"  = "Loja da Epic Games com jogos gratuitos semanais e lançamentos de peso.";
+        "GOG Galaxy"        = "Cliente da GOG sem DRM para gerenciar todos os seus jogos em um só lugar.";
+        "EA App"            = "Aplicativo oficial da Electronic Arts para EA Play e franquias Battlefield/Fifa.";
+        "Ubisoft Connect"   = "Launcher da Ubisoft para Assassin's Creed, Far Cry e recompensas exclusivas.";
+        "Battle.net"        = "Plataforma oficial da Blizzard para Diablo, World of Warcraft, Overwatch e Call of Duty."
+    }
+
+    $checkBoxes = @()
+    $idx = 0
+    foreach ($storeName in $storeItems.Keys) {
+        $idx++
+
+        $lblNumModal = New-Object System.Windows.Forms.Label
+        $lblNumModal.Text = ("{0:D2}" -f $idx)
+        $lblNumModal.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+        $lblNumModal.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
+        $lblNumModal.AutoSize = $true
+        $lblNumModal.Location = New-Object System.Drawing.Point(20, (88 + (($idx - 1) * 38)))
+        $modal.Controls.Add($lblNumModal)
+
+        $chk = New-Object System.Windows.Forms.CheckBox
+        $chk.Text = $storeName
+        $chk.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+        $chk.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
+        $chk.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+        $chk.UseVisualStyleBackColor = $false
+        $chk.Size = New-Object System.Drawing.Size(370, 30)
+        $chk.Location = New-Object System.Drawing.Point(50, (80 + (($idx - 1) * 38)))
+        $chk.Tag = @{ Id = $storeItems[$storeName]; Desc = $storeDescriptions[$storeName] }
+        
+        $chk.Add_MouseEnter({
+            if ($this.Tag.Desc) {
+                $modalToolTipLbl.Text = $this.Tag.Desc
+                $pt = $modal.PointToClient([System.Windows.Forms.Cursor]::Position)
+                $modalToolTip.Location = New-Object System.Drawing.Point(($pt.X + 10), ($pt.Y + 10))
+                $modalToolTip.Visible = $true
+                $modalToolTip.BringToFront()
+            }
+        })
+        $chk.Add_MouseLeave({
+            $modalToolTip.Visible = $false
+        })
+
+        $checkBoxes += $chk
+        $modal.Controls.Add($chk)
+    }
+
+    $chkSelectAll.Add_CheckedChanged({
+        $state = $this.Checked
+        foreach ($c in $checkBoxes) { $c.Checked = $state }
+    })
+
+    $btnConfirm = New-Object System.Windows.Forms.Button
+    $btnConfirm.Text = "Instalar Selecionadas"
+    $btnConfirm.Size = New-Object System.Drawing.Size(400, 42)
+    $btnConfirm.Location = New-Object System.Drawing.Point(30, 350)
+    $btnConfirm.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnConfirm.FlatAppearance.BorderSize = 0
+    $btnConfirm.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $btnConfirm.ForeColor = [System.Drawing.Color]::White
+    $btnConfirm.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
+    $btnConfirm.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnConfirm.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(20, 140, 240) })
+    $btnConfirm.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215) })
+
+    $btnConfirm.Add_Click({
+        $selected = @($checkBoxes | Where-Object { $_.Checked })
+        if ($selected.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("Nenhuma loja foi selecionada!", "Aviso", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            return
+        }
+
+        $passosLote = @()
+        $sIdx = 0
+        $totalSel = $selected.Count
+        foreach ($c in $selected) {
+            $sIdx++
+            $passosLote += Passo $sIdx $totalSel "$($c.Text)" (W "$($c.Tag.Id)")
+        }
+
+        $modal.Close()
+        Start-Task "Instalação de Launchers ($totalSel lojas)" (Lote $passosLote) -total $totalSel
+    })
+
+    $modal.Controls.Add($btnConfirm)
+    [void]$modal.ShowDialog($form)
+    $modal.Dispose()
+})
+
+$form.Controls.Add($btnOpenStoresModal)
+
+
+# 14. O que deseja fazer no PC? (Instalação Personalizada Total)
+$lblNum14 = New-Object System.Windows.Forms.Label
+$lblNum14.Text = "14"
+$lblNum14.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblNum14.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
+$lblNum14.AutoSize = $true
+$lblNum14.Location = New-Object System.Drawing.Point(321, 566)
+$form.Controls.Add($lblNum14)
+
+$btnWhatToDo = New-Object System.Windows.Forms.Button
+$btnWhatToDo.Text = "O que deseja fazer no PC?"
+$btnWhatToDo.Size = New-Object System.Drawing.Size(272, 42)
+$btnWhatToDo.Location = New-Object System.Drawing.Point(349, 554)
+$btnWhatToDo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnWhatToDo.FlatAppearance.BorderSize = 0
+$btnWhatToDo.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnWhatToDo.ForeColor = [System.Drawing.Color]::White
+$btnWhatToDo.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+$btnWhatToDo.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnWhatToDo.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(20, 140, 240) })
+$btnWhatToDo.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215) })
+
+$btnWhatToDo.Add_Click({
+    $modalPC = New-Object System.Windows.Forms.Form
+    $modalPC.ClientSize = New-Object System.Drawing.Size(460, 540)
+    $modalPC.StartPosition = "CenterParent"
+    $modalPC.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $modalPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+    $modalPC.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+
+    $modalPC.Add_MouseDown($modalDrag)
+    $modalMovePC = {
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $mousePos = [System.Windows.Forms.Control]::MousePosition
+            $mousePos.Offset(-$global:modalOffset.X, -$global:modalOffset.Y)
+            $modalPC.Location = $mousePos
+        }
+    }
+    $modalPC.Add_MouseMove($modalMovePC)
+
+    $btnCloseModalPC = New-Object System.Windows.Forms.Button
+    $btnCloseModalPC.Text = "✕"
+    $btnCloseModalPC.Size = New-Object System.Drawing.Size(40, 30)
+    $btnCloseModalPC.Location = New-Object System.Drawing.Point(420, 0)
+    $btnCloseModalPC.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnCloseModalPC.FlatAppearance.BorderSize = 0
+    $btnCloseModalPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+    $btnCloseModalPC.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $btnCloseModalPC.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnCloseModalPC.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(232, 17, 35); $this.ForeColor = [System.Drawing.Color]::White })
+    $btnCloseModalPC.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38); $this.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200) })
+    $btnCloseModalPC.Add_Click({ $modalPC.Close() })
+    $modalPC.Controls.Add($btnCloseModalPC)
+
+    $lblModalTitlePC = New-Object System.Windows.Forms.Label
+    $lblModalTitlePC.Text = "INSTALAÇÃO PERSONALIZADA TOTAL:"
+    # CORREÇÃO DA FONTE: Criada com tamanho e estilo de forma segura
+    $lblModalTitlePC.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+    $lblModalTitlePC.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
+    $lblModalTitlePC.AutoSize = $true
+    $lblModalTitlePC.Location = New-Object System.Drawing.Point(15, 15)
+    $lblModalTitlePC.Add_MouseDown({
+        if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $global:modalOffset = New-Object System.Drawing.Point($_.X + $this.Location.X, $_.Y + $this.Location.Y)
+        }
+    })
+    $lblModalTitlePC.Add_MouseMove($modalMovePC)
+    $modalPC.Controls.Add($lblModalTitlePC)
+
+    $chkSelectAllPC = New-Object System.Windows.Forms.CheckBox
+    $chkSelectAllPC.Text = "Marcar / Desmarcar Todos"
+    $chkSelectAllPC.AutoSize = $true
+    $chkSelectAllPC.Location = New-Object System.Drawing.Point(20, 45)
+    $chkSelectAllPC.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
+    $chkSelectAllPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $chkSelectAllPC.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $modalPC.Controls.Add($chkSelectAllPC)
+
+    $modalToolTipPC = New-Object System.Windows.Forms.Panel
+    $modalToolTipPC.Size = New-Object System.Drawing.Size(300, 70)
+    $modalToolTipPC.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
+    $modalToolTipPC.Visible = $false
+    $modalToolTipPC.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+
+    $modalToolTipLblPC = New-Object System.Windows.Forms.Label
+    $modalToolTipLblPC.Location = New-Object System.Drawing.Point(8, 8)
+    $modalToolTipLblPC.Size = New-Object System.Drawing.Size(282, 54)
+    $modalToolTipLblPC.ForeColor = [System.Drawing.Color]::FromArgb(220, 225, 235)
+    $modalToolTipLblPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $modalToolTipPC.Controls.Add($modalToolTipLblPC)
+    $modalPC.Controls.Add($modalToolTipPC)
+    $modalToolTipPC.BringToFront()
+
+    $kitGamerScript = '
+        Write-Host "##AGORA [1/6] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"
+        Write-Host "##AGORA [2/6] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"
+        Write-Host "##AGORA [3/6] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"
+        Write-Host "##AGORA [4/6] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"
+        Write-Host "##AGORA [5/6] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"
+        Install-GamerGPUApp
+    '
+
+    $allCustomItems = [ordered]@{
+        "Google Chrome"          = @{ Cmd = (W "Google.Chrome"); Desc = "Instala o navegador Google Chrome." }
+        "WinRAR"                 = @{ Cmd = (W "RARLab.WinRAR"); Desc = "Instala o compactador WinRAR com chave de registro ativa." }
+        "MSI Afterburner"        = @{ Cmd = (W "Guru3D.Afterburner"); Desc = "Instala o monitorador de hardware MSI Afterburner." }
+        "Adobe Acrobat Reader"   = @{ Cmd = (W "Adobe.Acrobat.Reader.64-bit"); Desc = "Instala o leitor oficial de arquivos PDF Adobe Reader." }
+        "Microsoft Office"       = @{ Cmd = $officeInstallAndShortcuts; Desc = "Instala o Microsoft Office 365 com atalhos na Área de Trabalho." }
+        "Kit Gamer (Completo)"   = @{ Cmd = $kitGamerScript; Desc = "Desempenho máximo, runtimes de C++, .NET, DirectX e App da GPU." }
+        "Atualizar Windows"      = @{ Cmd = "Invoke-WindowsUpdate"; Desc = "Busca e instala todas as atualizações pendentes do Windows Update." }
+        "Atualizar Drivers"      = @{ Cmd = "Invoke-DriverUpdate"; Desc = "Busca e instala atualizações de drivers oficiais via Windows Update." }
+    }
+
+    $checkBoxesPC = @()
+    $idxPC = 0
+    foreach ($itemName in $allCustomItems.Keys) {
+        $idxPC++
+
+        $lblNumModalPC = New-Object System.Windows.Forms.Label
+        $lblNumModalPC.Text = ("{0:D2}" -f $idxPC)
+        $lblNumModalPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+        $lblNumModalPC.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
+        $lblNumModalPC.AutoSize = $true
+        $lblNumModalPC.Location = New-Object System.Drawing.Point(20, (88 + (($idxPC - 1) * 48)))
+        $modalPC.Controls.Add($lblNumModalPC)
+
+        $chkPC = New-Object System.Windows.Forms.CheckBox
+        $chkPC.Text = $itemName
+        # CORREÇÃO DA FONTE: Criada corretamente com os parâmetros esperados pelo .NET
+        $chkPC.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::SemiBold)
+        $chkPC.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
+        $chkPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+        $chkPC.UseVisualStyleBackColor = $false
+        $chkPC.Size = New-Object System.Drawing.Size(370, 42)
+        $chkPC.Location = New-Object System.Drawing.Point(50, (80 + (($idxPC - 1) * 48)))
+        $chkPC.Tag = $allCustomItems[$itemName]
+        
+        $chkPC.Add_MouseEnter({
+            if ($this.Tag.Desc) {
+                $modalToolTipLblPC.Text = $this.Tag.Desc
+                $pt = $modalPC.PointToClient([System.Windows.Forms.Cursor]::Position)
+                $modalToolTipPC.Location = New-Object System.Drawing.Point(($pt.X + 10), ($pt.Y + 10))
+                $modalToolTipPC.Visible = $true
+                $modalToolTipPC.BringToFront()
+            }
+        })
+        $chkPC.Add_MouseLeave({
+            $modalToolTipPC.Visible = $false
+        })
+
+        $checkBoxesPC += $chkPC
+        $modalPC.Controls.Add($chkPC)
+    }
+
+    $chkSelectAllPC.Add_CheckedChanged({
+        $statePC = $this.Checked
+        foreach ($c in $checkBoxesPC) { $c.Checked = $statePC }
+    })
+
+    $btnConfirmPC = New-Object System.Windows.Forms.Button
+    $btnConfirmPC.Text = "Instalar Recursos Selecionados"
+    $btnConfirmPC.Size = New-Object System.Drawing.Size(400, 42)
+    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 470)
+    $btnConfirmPC.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnConfirmPC.FlatAppearance.BorderSize = 0
+    $btnConfirmPC.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $btnConfirmPC.ForeColor = [System.Drawing.Color]::White
+    $btnConfirmPC.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::SemiBold)
+    $btnConfirmPC.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnConfirmPC.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(20, 140, 240) })
+    $btnConfirmPC.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215) })
+
+    $btnConfirmPC.Add_Click({
+        $selectedPC = @($checkBoxesPC | Where-Object { $_.Checked })
+        if ($selectedPC.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("Nenhum item foi selecionado!", "Aviso", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            return
+        }
+
+        $passosPersonalizados = @()
+        $pIdx = 0
+        $totalPers = $selectedPC.Count
+        foreach ($c in $selectedPC) {
+            $pIdx++
+            $passosPersonalizados += Passo $pIdx $totalPers "$($c.Text)" $c.Tag.Cmd
+        }
+
+        $modalPC.Close()
+        Start-Task "Instalação Personalizada Total ($totalPers itens)" (Lote $passosPersonalizados) -total $totalPers
+    })
+
+    $modalPC.Controls.Add($btnConfirmPC)
+    [void]$modalPC.ShowDialog($form)
+    $modalPC.Dispose()
+})
+
+$form.Controls.Add($btnWhatToDo)
+
+# =====================================================================
 # SEÇÃO 8: PAINEL DE STATUS E LOGS (CONSOLE CUSTOMIZADO COM BARRA 100% ESCURA)
 # =====================================================================
 
@@ -1139,7 +1532,6 @@ $lblStatus.AutoSize = $true
 $lblStatus.Location = New-Object System.Drawing.Point(680, 142)
 $form.Controls.Add($lblStatus)
 
-# Barra de Progresso Customizada Escura
 $progressBarBg = New-Object System.Windows.Forms.Panel
 $progressBarBg.Location = New-Object System.Drawing.Point(680, 170)
 $progressBarBg.Size = New-Object System.Drawing.Size(416, 8)
@@ -1163,7 +1555,6 @@ function Update-CustomProgress($val) {
     }
 }
 
-# Container do Console para Embutir a TextBox sem borda branca de rolagem
 $logContainer = New-Object System.Windows.Forms.Panel
 $logContainer.Location = New-Object System.Drawing.Point(680, 190)
 $logContainer.Size = New-Object System.Drawing.Size(416, 420)
@@ -1182,7 +1573,6 @@ $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
 $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $logContainer.Controls.Add($logBox)
 
-# Barra de Rolagem Customizada 100% Escura no Tom
 $customScrollBg = New-Object System.Windows.Forms.Panel
 $customScrollBg.Location = New-Object System.Drawing.Point(398, 0)
 $customScrollBg.Size = New-Object System.Drawing.Size(18, 420)
@@ -1204,7 +1594,6 @@ $logBox.Add_TextChanged({
     }
 })
 
-# Timer de atualização dos logs da fila
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
 
@@ -1268,7 +1657,7 @@ $watermark.Location = New-Object System.Drawing.Point(680, 625)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.48"
+$versaoLabel.Text = "v0.62"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
