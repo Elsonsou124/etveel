@@ -1143,7 +1143,7 @@ $btnOpenStoresModal.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::F
 
 $btnOpenStoresModal.Add_Click({
     $modal = New-Object System.Windows.Forms.Form
-    $modal.ClientSize = New-Object System.Drawing.Size(460, 420)
+    $modal.ClientSize = New-Object System.Drawing.Size(460, 300)
     $modal.StartPosition = "CenterParent"
     $modal.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $modal.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
@@ -1190,7 +1190,7 @@ $btnOpenStoresModal.Add_Click({
     $chkSelectAll = New-Object System.Windows.Forms.CheckBox
     $chkSelectAll.Text = "Marcar / Desmarcar Todos"
     $chkSelectAll.AutoSize = $true
-    $chkSelectAll.Location = New-Object System.Drawing.Point((430 - $chkSelectAll.PreferredSize.Width), 322)
+    $chkSelectAll.Location = New-Object System.Drawing.Point((430 - $chkSelectAll.PreferredSize.Width), 213)
     $chkSelectAll.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
     $chkSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $chkSelectAll.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -1229,6 +1229,15 @@ $btnOpenStoresModal.Add_Click({
         "Battle.net"        = "Plataforma oficial da Blizzard para Diablo, World of Warcraft, Overwatch e Call of Duty."
     }
 
+    $colPanels = @()
+    foreach ($cx in @(15, 235)) {
+        $cp = New-Object System.Windows.Forms.Panel
+        $cp.Location = New-Object System.Drawing.Point($cx, 75)
+        $cp.Size = New-Object System.Drawing.Size(210, 124)
+        $cp.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
+        $modal.Controls.Add($cp)
+        $colPanels += $cp
+    }
     $checkBoxes = @()
     $idx = 0
     foreach ($storeName in $storeItems.Keys) {
@@ -1239,17 +1248,18 @@ $btnOpenStoresModal.Add_Click({
         $lblNumModal.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
         $lblNumModal.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
         $lblNumModal.AutoSize = $true
-        $lblNumModal.Location = New-Object System.Drawing.Point(20, (88 + (($idx - 1) * 38)))
-        $modal.Controls.Add($lblNumModal)
+        $colI = ($idx - 1) % 2; $rowI = [Math]::Floor(($idx - 1) / 2)
+        $lblNumModal.Location = New-Object System.Drawing.Point(8, (17 + ($rowI * 38)))
+        $colPanels[$colI].Controls.Add($lblNumModal)
 
         $chk = New-Object System.Windows.Forms.CheckBox
         $chk.Text = $storeName
         $chk.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
         $chk.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
-        $chk.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+        $chk.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
         $chk.UseVisualStyleBackColor = $false
-        $chk.Size = New-Object System.Drawing.Size(370, 30)
-        $chk.Location = New-Object System.Drawing.Point(50, (80 + (($idx - 1) * 38)))
+        $chk.Size = New-Object System.Drawing.Size(172, 30)
+        $chk.Location = New-Object System.Drawing.Point(34, (10 + ($rowI * 38)))
         $chk.Tag = @{ Id = $storeItems[$storeName]; Desc = $storeDescriptions[$storeName] }
         
         $chk.Add_MouseEnter({
@@ -1266,7 +1276,7 @@ $btnOpenStoresModal.Add_Click({
         })
 
         $checkBoxes += $chk
-        $modal.Controls.Add($chk)
+        $colPanels[$colI].Controls.Add($chk)
     }
 
     $chkSelectAll.Add_CheckedChanged({
@@ -1277,7 +1287,7 @@ $btnOpenStoresModal.Add_Click({
     $btnConfirm = New-Object System.Windows.Forms.Button
     $btnConfirm.Text = "Instalar Selecionadas"
     $btnConfirm.Size = New-Object System.Drawing.Size(400, 42)
-    $btnConfirm.Location = New-Object System.Drawing.Point(30, 350)
+    $btnConfirm.Location = New-Object System.Drawing.Point(30, 240)
     $btnConfirm.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirm.FlatAppearance.BorderSize = 0
     $btnConfirm.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
@@ -1338,7 +1348,7 @@ $btnWhatToDo.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb
 
 $btnWhatToDo.Add_Click({
     $modalPC = New-Object System.Windows.Forms.Form
-    $modalPC.ClientSize = New-Object System.Drawing.Size(460, 540)
+    $modalPC.ClientSize = New-Object System.Drawing.Size(460, 450)
     $modalPC.StartPosition = "CenterParent"
     $modalPC.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $modalPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
@@ -1386,7 +1396,7 @@ $btnWhatToDo.Add_Click({
     $chkSelectAllPC = New-Object System.Windows.Forms.CheckBox
     $chkSelectAllPC.Text = "Marcar / Desmarcar Todos"
     $chkSelectAllPC.AutoSize = $true
-    $chkSelectAllPC.Location = New-Object System.Drawing.Point((430 - $chkSelectAllPC.PreferredSize.Width), 462)
+    $chkSelectAllPC.Location = New-Object System.Drawing.Point((430 - $chkSelectAllPC.PreferredSize.Width), 365)
     $chkSelectAllPC.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
     $chkSelectAllPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $chkSelectAllPC.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -1423,10 +1433,25 @@ $btnWhatToDo.Add_Click({
         "Adobe Acrobat Reader"   = @{ Cmd = (W "Adobe.Acrobat.Reader.64-bit"); Desc = "Instala o leitor oficial de arquivos PDF Adobe Reader." }
         "Microsoft Office"       = @{ Cmd = $officeInstallAndShortcuts; Desc = "Instala o Microsoft Office 365 com atalhos na Área de Trabalho." }
         "Kit Gamer (Completo)"   = @{ Cmd = $kitGamerScript; Desc = "Desempenho máximo, runtimes de C++, .NET, DirectX e App da GPU." }
+        "Steam"                  = @{ Cmd = (W "Valve.Steam"); Desc = "Plataforma líder da Valve para jogos de PC, comunidade e biblioteca digital." }
+        "Epic Games Store"       = @{ Cmd = (W "EpicGames.EpicGamesLauncher"); Desc = "Loja da Epic Games com jogos gratuitos semanais e lançamentos de peso." }
+        "GOG Galaxy"             = @{ Cmd = (W "GOG.Galaxy"); Desc = "Cliente da GOG sem DRM para gerenciar todos os seus jogos em um só lugar." }
+        "EA App"                 = @{ Cmd = (W "ElectronicArts.EAApp"); Desc = "Aplicativo oficial da Electronic Arts para EA Play e franquias Battlefield/Fifa." }
+        "Ubisoft Connect"        = @{ Cmd = (W "Ubisoft.Connect"); Desc = "Launcher da Ubisoft para Assassin's Creed, Far Cry e recompensas exclusivas." }
+        "Battle.net"             = @{ Cmd = (W "Blizzard.BattleNet"); Desc = "Plataforma oficial da Blizzard para Diablo, World of Warcraft, Overwatch e Call of Duty." }
         "Atualizar Windows"      = @{ Cmd = "Invoke-WindowsUpdate"; Desc = "Busca e instala todas as atualizações pendentes do Windows Update." }
         "Atualizar Drivers"      = @{ Cmd = "Invoke-DriverUpdate"; Desc = "Busca e instala atualizações de drivers oficiais via Windows Update." }
     }
 
+    $colPanelsPC = @()
+    foreach ($cx in @(15, 235)) {
+        $cp = New-Object System.Windows.Forms.Panel
+        $cp.Location = New-Object System.Drawing.Point($cx, 75)
+        $cp.Size = New-Object System.Drawing.Size(210, 276)
+        $cp.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
+        $modalPC.Controls.Add($cp)
+        $colPanelsPC += $cp
+    }
     $checkBoxesPC = @()
     $idxPC = 0
     foreach ($itemName in $allCustomItems.Keys) {
@@ -1437,18 +1462,19 @@ $btnWhatToDo.Add_Click({
         $lblNumModalPC.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
         $lblNumModalPC.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
         $lblNumModalPC.AutoSize = $true
-        $lblNumModalPC.Location = New-Object System.Drawing.Point(20, (88 + (($idxPC - 1) * 48)))
-        $modalPC.Controls.Add($lblNumModalPC)
+        $colI = ($idxPC - 1) % 2; $rowI = [Math]::Floor(($idxPC - 1) / 2)
+        $lblNumModalPC.Location = New-Object System.Drawing.Point(8, (17 + ($rowI * 38)))
+        $colPanelsPC[$colI].Controls.Add($lblNumModalPC)
 
         $chkPC = New-Object System.Windows.Forms.CheckBox
         $chkPC.Text = $itemName
         # CORREÇÃO DA FONTE: Criada corretamente com os parâmetros esperados pelo .NET
         $chkPC.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
         $chkPC.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
-        $chkPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
+        $chkPC.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
         $chkPC.UseVisualStyleBackColor = $false
-        $chkPC.Size = New-Object System.Drawing.Size(370, 42)
-        $chkPC.Location = New-Object System.Drawing.Point(50, (80 + (($idxPC - 1) * 48)))
+        $chkPC.Size = New-Object System.Drawing.Size(172, 30)
+        $chkPC.Location = New-Object System.Drawing.Point(34, (10 + ($rowI * 38)))
         $chkPC.Tag = $allCustomItems[$itemName]
         
         $chkPC.Add_MouseEnter({
@@ -1465,7 +1491,7 @@ $btnWhatToDo.Add_Click({
         })
 
         $checkBoxesPC += $chkPC
-        $modalPC.Controls.Add($chkPC)
+        $colPanelsPC[$colI].Controls.Add($chkPC)
     }
 
     $chkSelectAllPC.Add_CheckedChanged({
@@ -1476,7 +1502,7 @@ $btnWhatToDo.Add_Click({
     $btnConfirmPC = New-Object System.Windows.Forms.Button
     $btnConfirmPC.Text = "Instalar Recursos Selecionados"
     $btnConfirmPC.Size = New-Object System.Drawing.Size(400, 42)
-    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 488)
+    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 392)
     $btnConfirmPC.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirmPC.FlatAppearance.BorderSize = 0
     $btnConfirmPC.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
