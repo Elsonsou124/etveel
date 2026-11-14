@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-set "APP_VER=v0.72"
+set "APP_VER=v0.75"
 
 :ESCOLHA_MODO
 cls
