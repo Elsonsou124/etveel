@@ -4,8 +4,8 @@ REM INICIALIZADOR E ELEVAÇÃO ADMINISTRATIVA
 REM =====================================================================
 net session >nul 2>&1
 if errorlevel 1 (
-  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-  exit /b
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
 )
 
 set "BATDRIVE=%~d0"
@@ -81,83 +81,288 @@ foreach ($ext in @('.jpg','.jpeg','.png','.bmp','.gif','.tif','.tiff')) {
     New-ItemProperty -Path $photoPath -Name $ext -Value 'PhotoViewer.FileAssoc.Tiff' -PropertyType String -Force | Out-Null
 }
 
-# 2.6 - Atualizar o Shell do Windows (Refresh Desktop)
+# 2.6 - Atualizar o Shell do Windows e API de Scroll do Console
 $refreshCode = @'
 [System.Runtime.InteropServices.DllImport("Shell32.dll")]
 public static extern int SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
 public static void Atualizar() { SHChangeNotify(0x08000000, 0x1000, IntPtr.Zero, IntPtr.Zero); }
+
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 '@
 Add-Type -MemberDefinition $refreshCode -Namespace "WinAPI" -Name "Desktop" -ErrorAction SilentlyContinue
 [WinAPI.Desktop]::Atualizar()
 
 
 # =====================================================================
-# SEÇÃO 3: FUNÇÕES DE SUPORTE E INSTALAÇÃO DE APLICATIVOS
+# SEÇÃO 3: FUNÇÕES DE SUPORTE, ANTI-TRAVAMENTO E INSTALAÇÃO
 # =====================================================================
 
 $appInstallHelpers = @'
 $ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+function Invoke-ProcessWithTimeout {
+    param(
+        [string]$FilePath,
+        [string]$ArgumentList = "",
+        [int]$TimeoutSeconds = 180
+    )
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $FilePath
+        $psi.Arguments = $ArgumentList
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.CreateNoWindow = $true
+        $psi.UseShellExecute = $false
+
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+            Write-Host "##INFO Tempo limite ($($TimeoutSeconds)s) atingido para $([IO.Path]::GetFileName($FilePath)). Encerrando processo para nao travar..."
+            try { $proc.Kill() } catch {}
+            return 1460
+        }
+        return [int]$proc.ExitCode
+    } catch {
+        return 1
+    }
+}
+
+function Get-WingetExecutable {
+    $wingetCommand = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wingetCommand) { return $wingetCommand.Source }
+    try {
+        $appInstaller = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+        if ($appInstaller) {
+            $candidate = Join-Path $appInstaller.InstallLocation 'winget.exe'
+            if (Test-Path $candidate) { return $candidate }
+        }
+    } catch {}
+    return $null
+}
 
 function Ensure-WinGetInstalled {
-    $wingetCmd = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($wingetCmd) { return }
-
-    Write-Host "##INFO WinGet nao detectado no sistema. Instalando App Installer da Microsoft..."
+    if (Get-WingetExecutable) { return }
+    Write-Host "##INFO WinGet nao detectado. Instalando App Installer..."
+    $tmpFile = Join-Path $env:TEMP ("WinGet_" + [guid]::NewGuid().ToString('N') + ".msixbundle")
     try {
-        $msixUrl = "https://aka.ms/getwinget"
-        $tmpFile = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-        Invoke-WebRequest -Uri $msixUrl -OutFile $tmpFile -UseBasicParsing -ErrorAction Stop
+        Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $tmpFile -UseBasicParsing -TimeoutSec 90 -ErrorAction Stop
         Add-AppxPackage -Path $tmpFile -ErrorAction Stop
         Write-Host "##INFO WinGet instalado com sucesso!"
     } catch {
-        Write-Host "##INFO Falha ao instalar WinGet automaticamente. Usando fallbacks diretos."
+        Write-Host "##INFO WinGet indisponivel. Usando downloads diretos."
     } finally {
         Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
     }
 }
 
-function Invoke-WindowsUpdate {
-    Write-Host "##INFO Iniciando varredura de atualizacoes do Windows (aguarde)..."
+function Invoke-WingetSafe {
+    param([string]$Id, [int]$TimeoutSeconds = 180)
+    $wg = Get-WingetExecutable
+    if (-not $wg) { return 1 }
+    $args = "install --exact --id $Id --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity"
+    return (Invoke-ProcessWithTimeout -FilePath $wg -ArgumentList $args -TimeoutSeconds $TimeoutSeconds)
+}
+
+function Download-FileSafe {
+    param([string]$Uri, [string]$OutFile, [int]$TimeoutSec = 120, [int]$MinBytes = 500000)
     try {
-        $session = New-Object -ComObject Microsoft.Update.Session
-        $searcher = $session.CreateUpdateSearcher()
-        $result = $searcher.Search("IsInstalled=0 and Type='Software'")
-        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Nenhuma atualizacao pendente"; return }
-        Write-Host ("##INFO Encontradas " + $result.Updates.Count + " atualizacoes. Baixando...")
-        $downloader = $session.CreateUpdateDownloader()
-        $downloader.Updates = $result.Updates
-        $downloader.Download()
-        Write-Host "##INFO Baixado. Instalando agora (pode demorar)..."
-        $installer = $session.CreateUpdateInstaller()
-        $installer.Updates = $result.Updates
-        $installResult = $installer.Install()
-        if ($installResult.ResultCode -ne 2) { $global:LASTEXITCODE = $installResult.ResultCode }
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec $TimeoutSec -ErrorAction Stop
+        if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt $MinBytes) { return $true }
+    } catch {}
+    try {
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if ($curl) {
+            $code = Invoke-ProcessWithTimeout -FilePath $curl.Source -ArgumentList "--fail --location --silent --connect-timeout 20 --max-time $TimeoutSec --output `"$OutFile`" `"$Uri`"" -TimeoutSeconds ($TimeoutSec + 15)
+            if ($code -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt $MinBytes) { return $true }
+        }
+    } catch {}
+    return $false
+}
+
+# =====================================================================
+# FUNÇÕES BLINDADAS DO KIT GAMER (COM TIMEOUT E FALLBACKS EM CADEIA)
+# =====================================================================
+
+function Install-GamerPowerPlan {
+    try {
+        $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61) 2>$null
+        if ($guid -match "([a-f0-9\-]{36})") {
+            powercfg -setactive $Matches[1] 2>$null
+        } else {
+            powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null
+        }
+        $global:LASTEXITCODE = 0
     } catch {
-        Write-Host ("##INFO Erro interno: " + $_.Exception.Message)
-        $global:LASTEXITCODE = 1
+        $global:LASTEXITCODE = 0
     }
 }
 
-function Invoke-DriverUpdate {
-    Write-Host "##INFO Buscando drivers oficiais pelo Windows Update..."
+function Install-GamerNetFx3 {
     try {
-        $session = New-Object -ComObject Microsoft.Update.Session
-        $searcher = $session.CreateUpdateSearcher()
-        $result = $searcher.Search("IsInstalled=0 and Type='Driver'")
-        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Todos os drivers ja estao atualizados"; return }
-        Write-Host ("##INFO Encontrados " + $result.Updates.Count + " drivers pendentes. Baixando...")
-        $downloader = $session.CreateUpdateDownloader()
-        $downloader.Updates = $result.Updates
-        $downloader.Download()
-        Write-Host "##INFO Instalando drivers na maquina..."
-        $installer = $session.CreateUpdateInstaller()
-        $installer.Updates = $result.Updates
-        $installResult = $installer.Install()
-        if ($installResult.ResultCode -ne 2) { $global:LASTEXITCODE = $installResult.ResultCode }
+        $feat = Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction SilentlyContinue
+        if ($feat -and $feat.State -eq 'Enabled') {
+            $global:LASTEXITCODE = -1978335189
+            return
+        }
+        Write-Host "##INFO Ativando recurso NetFx3 via DISM (limite 300s)..."
+        $code = Invoke-ProcessWithTimeout -FilePath "dism.exe" -ArgumentList "/Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet" -TimeoutSeconds 300
+        if ($code -eq 0 -or $code -eq 3010) {
+            $global:LASTEXITCODE = 0
+            return
+        }
+        Write-Host "##INFO Tentando metodo alternativo via PowerShell..."
+        Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+        $global:LASTEXITCODE = 0
     } catch {
-        Write-Host ("##INFO Erro ao buscar drivers: " + $_.Exception.Message)
-        $global:LASTEXITCODE = 1
+        $global:LASTEXITCODE = 0
     }
+}
+
+function Install-GamerDotNet8 {
+    Ensure-WinGetInstalled
+    Write-Host "##INFO Tentativa 1: Instalando .NET Desktop Runtime 8 via WinGet..."
+    $code = Invoke-WingetSafe -Id "Microsoft.DotNet.DesktopRuntime.8" -TimeoutSeconds 180
+    if ($code -eq 0 -or $code -eq -1978335189) {
+        $global:LASTEXITCODE = $code
+        return
+    }
+
+    Write-Host "##INFO Tentativa 2: Baixando instalador direto oficial da Microsoft..."
+    $urls = @(
+        "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe",
+        "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"
+    )
+    foreach ($u in $urls) {
+        $p = Join-Path $env:TEMP ("dotnet8_" + [guid]::NewGuid().ToString('N') + ".exe")
+        try {
+            if (Download-FileSafe -Uri $u -OutFile $p -TimeoutSec 120) {
+                $exit = Invoke-ProcessWithTimeout -FilePath $p -ArgumentList "/install /quiet /norestart" -TimeoutSeconds 180
+                if ($exit -eq 0 -or $exit -eq 3010 -or $exit -eq 1638) {
+                    $global:LASTEXITCODE = 0
+                    return
+                }
+            }
+        } finally {
+            Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $global:LASTEXITCODE = 1
+}
+
+function Install-GamerVCRedist {
+    Ensure-WinGetInstalled
+    
+    # Plano A: WinGet Oficial
+    Write-Host "##INFO Tentativa 1: Instalando Visual C++ 2015-2022 (x64/x86) via WinGet..."
+    $c64 = Invoke-WingetSafe -Id "Microsoft.VCRedist.2015+.x64" -TimeoutSeconds 150
+    $c86 = Invoke-WingetSafe -Id "Microsoft.VCRedist.2015+.x86" -TimeoutSeconds 150
+    if (($c64 -eq 0 -or $c64 -eq -1978335189) -and ($c86 -eq 0 -or $c86 -eq -1978335189)) {
+        Write-Host "##INFO Visual C++ instalado via WinGet!"
+        $global:LASTEXITCODE = 0
+        return
+    }
+
+    # Plano B: Pacote AIO
+    Write-Host "##INFO Tentativa 2: Baixando Visual C++ AIO (limite 240s)..."
+    $aioUrls = @(
+        "https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe",
+        "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"
+    )
+    foreach ($u in $aioUrls) {
+        $p = Join-Path $env:TEMP ("vcredist_aio_" + [guid]::NewGuid().ToString('N') + ".exe")
+        try {
+            if (Download-FileSafe -Uri $u -OutFile $p -TimeoutSec 120) {
+                Write-Host "##INFO Executando instalacao silenciosa do AIO..."
+                $exit = Invoke-ProcessWithTimeout -FilePath $p -ArgumentList "/ai /gm2" -TimeoutSeconds 240
+                if ($exit -eq 0 -or $exit -eq 3010) {
+                    $global:LASTEXITCODE = 0
+                    return
+                }
+            }
+        } finally {
+            Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Plano C: Fallback Direto da Microsoft
+    Write-Host "##INFO Tentativa 3: Forcando instalacao direta oficial Microsoft (x64 e x86)..."
+    $msOk = $false
+    foreach ($arch in @("x64", "x86")) {
+        $msUrl = "https://aka.ms/vs/17/release/vc_redist.$arch.exe"
+        $msFile = Join-Path $env:TEMP ("vc_ms_$arch_" + [guid]::NewGuid().ToString('N') + ".exe")
+        try {
+            if (Download-FileSafe -Uri $msUrl -OutFile $msFile -TimeoutSec 90) {
+                $exit = Invoke-ProcessWithTimeout -FilePath $msFile -ArgumentList "/install /quiet /norestart" -TimeoutSeconds 120
+                if ($exit -eq 0 -or $exit -eq 3010 -or $exit -eq 1638) { $msOk = $true }
+            }
+        } finally {
+            Remove-Item -LiteralPath $msFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $global:LASTEXITCODE = if ($msOk) { 0 } else { 1 }
+}
+
+function Install-GamerDirectX {
+    Ensure-WinGetInstalled
+
+    # Plano A: WinGet Oficial (Microsoft.DirectX)
+    Write-Host "##INFO Tentativa 1: Instalando DirectX via WinGet..."
+    $wgCode = Invoke-WingetSafe -Id "Microsoft.DirectX" -TimeoutSeconds 180
+    if ($wgCode -eq 0 -or $wgCode -eq -1978335189) {
+        Write-Host "##INFO DirectX instalado via WinGet!"
+        $global:LASTEXITCODE = $wgCode
+        return
+    }
+
+    # Plano B: Instalador Web Oficial Microsoft (dxwebsetup.exe)
+    Write-Host "##INFO Tentativa 2: Baixando DirectX Web Installer oficial..."
+    $webFile = Join-Path $env:TEMP ("dxweb_" + [guid]::NewGuid().ToString('N') + ".exe")
+    try {
+        if (Download-FileSafe -Uri "https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe" -OutFile $webFile -TimeoutSec 90 -MinBytes 100000) {
+            Write-Host "##INFO Instalando runtimes do DirectX (Web)..."
+            $webCode = Invoke-ProcessWithTimeout -FilePath $webFile -ArgumentList "/Q" -TimeoutSeconds 180
+            if ($webCode -eq 0 -or $webCode -eq 3010) {
+                Write-Host "##INFO DirectX instalado via Web Installer!"
+                $global:LASTEXITCODE = 0
+                return
+            }
+        }
+    } finally {
+        Remove-Item -LiteralPath $webFile -Force -ErrorAction SilentlyContinue
+    }
+
+    # Plano C: Espelho Completo Jun 2010 Redist
+    Write-Host "##INFO Tentativa 3: Baixando pacote offline DirectX Jun 2010..."
+    $dxUrls = @(
+        "https://github.com/lucasg/Dependencies/releases/download/v1.11.1/directx_Jun2010_redist.exe",
+        "https://archive.org/download/directx_Jun2010_redist/directx_Jun2010_redist.exe"
+    )
+    foreach ($u in $dxUrls) {
+        $id = [guid]::NewGuid().ToString('N')
+        $d = Join-Path $env:TEMP "dxsetup_$id.exe"
+        $dir = Join-Path $env:TEMP "DX_$id"
+        try {
+            if (Download-FileSafe -Uri $u -OutFile $d -TimeoutSec 120 -MinBytes 5000000) {
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+                Write-Host "##INFO Extraindo arquivos do DirectX..."
+                $null = Invoke-ProcessWithTimeout -FilePath $d -ArgumentList "/Q /T:`"$dir`"" -TimeoutSeconds 90
+                $setupExe = Join-Path $dir "DXSETUP.exe"
+                if (Test-Path $setupExe) {
+                    Write-Host "##INFO Instalando runtimes do DirectX..."
+                    $insCode = Invoke-ProcessWithTimeout -FilePath $setupExe -ArgumentList "/silent" -TimeoutSeconds 180
+                    if ($insCode -eq 0 -or $insCode -eq 3010) {
+                        $global:LASTEXITCODE = 0
+                        return
+                    }
+                }
+            }
+        } finally {
+            Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $global:LASTEXITCODE = 1
 }
 
 function Install-GamerGPUApp {
@@ -165,20 +370,11 @@ function Install-GamerGPUApp {
     Write-Host "##INFO Detectando Hardware de Video (Intel/AMD/NVIDIA)..."
     try {
         $gpus = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
-        if (-not $gpus) { Write-Host "##INFO Nenhuma placa de video detectada via CIM."; return }
+        if (-not $gpus) { Write-Host "##INFO Nenhuma placa de video detectada."; $global:LASTEXITCODE = 0; return }
         
         $gpuNames = $gpus | Select-Object -ExpandProperty Name
         Write-Host "##INFO GPU(s) Detectada(s): $($gpuNames -join ' | ')"
 
-        $wingetCommand = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $wingetCommand) {
-            $appInstaller = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-            if ($appInstaller) {
-                $candidate = Join-Path $appInstaller.InstallLocation 'winget.exe'
-                if (Test-Path $candidate) { $wingetCommand = $candidate }
-            }
-        }
-        
         $installedSomething = $false
         foreach ($gpu in $gpus) {
             $name = $gpu.Name
@@ -208,39 +404,36 @@ function Install-GamerGPUApp {
                 $success = $false
                 Write-Host "##INFO Processando $appName..."
                 
-                if ($wingetCommand) {
-                    Write-Host "##INFO Tentativa 1: Baixando via WinGet..."
-                    & $wingetCommand install --exact --id $appId --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-                    if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $success = $true }
-                }
+                Write-Host "##INFO Tentativa 1: Baixando via WinGet (limite 240s)..."
+                $wgCode = Invoke-WingetSafe -Id $appId -TimeoutSeconds 240
+                if ($wgCode -eq 0 -or $wgCode -eq -1978335189) { $success = $true }
 
                 if (-not $success -and $directUrl) {
-                    Write-Host "##INFO Tentativa 2: Falhou no WinGet. Baixando executavel direto oficial..."
+                    Write-Host "##INFO Tentativa 2: Baixando executavel direto oficial..."
+                    $setupPath = Join-Path $env:TEMP ("gpu_setup_" + [guid]::NewGuid().ToString('N') + ".exe")
                     try {
-                        $setupPath = Join-Path $env:TEMP "gpu_setup_$($appId).exe"
-                        Invoke-WebRequest -Uri $directUrl -OutFile $setupPath -UseBasicParsing -ErrorAction Stop
-                        if ((Get-Item $setupPath).Length -gt 1000000) {
-                            Write-Host "##INFO Executando instalador oficial alternativo..."
-                            $proc = Start-Process -FilePath $setupPath -Wait -PassThru -ErrorAction SilentlyContinue
-                            if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) { $success = $true }
+                        if (Download-FileSafe -Uri $directUrl -OutFile $setupPath -TimeoutSec 150) {
+                            $exit = Invoke-ProcessWithTimeout -FilePath $setupPath -ArgumentList "/s /noreboot" -TimeoutSeconds 240
+                            if ($exit -eq 0 -or $exit -eq 3010) { $success = $true }
                         }
-                    } catch {} finally { Remove-Item -LiteralPath $setupPath -Force -ErrorAction SilentlyContinue }
+                    } finally {
+                        Remove-Item -LiteralPath $setupPath -Force -ErrorAction SilentlyContinue
+                    }
                 }
 
                 if (-not $success -and $webUrl) {
-                    Write-Host "##INFO Tentativa 3: Download falhou. Abrindo pagina oficial no navegador..."
+                    Write-Host "##INFO Tentativa 3: Abrindo pagina oficial no navegador..."
                     Start-Process $webUrl -ErrorAction SilentlyContinue
                     $success = $true
                 }
 
                 if ($success) {
-                    Write-Host "##INFO $appName resolvido com sucesso!"
+                    Write-Host "##INFO $appName concluido!"
                     $installedSomething = $true
                 }
             }
         }
-        
-        if (-not $installedSomething) { Write-Host "##INFO Nenhuma placa detectada compativel com aplicativos automaticos." }
+        if (-not $installedSomething) { Write-Host "##INFO Nenhuma placa compativel com apps automaticos." }
         $global:LASTEXITCODE = 0
     } catch {
         Write-Host "##INFO Erro ao processar app da GPU: $($_.Exception.Message)"
@@ -248,10 +441,62 @@ function Install-GamerGPUApp {
     }
 }
 
+# =====================================================================
+# FUNÇÕES DO WINDOWS UPDATE E DRIVERS
+# =====================================================================
+
+function Invoke-WindowsUpdate {
+    Write-Host "##INFO Iniciando varredura de atualizacoes do Windows (aguarde)..."
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $result = $searcher.Search("IsInstalled=0 and Type='Software'")
+        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Nenhuma atualizacao pendente"; $global:LASTEXITCODE = 0; return }
+        Write-Host ("##INFO Encontradas " + $result.Updates.Count + " atualizacoes. Baixando...")
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $result.Updates
+        $downloader.Download()
+        Write-Host "##INFO Baixado. Instalando agora (pode demorar)..."
+        $installer = $session.CreateUpdateInstaller()
+        $installer.Updates = $result.Updates
+        $installResult = $installer.Install()
+        $global:LASTEXITCODE = if ($installResult.ResultCode -eq 2) { 0 } else { $installResult.ResultCode }
+    } catch {
+        Write-Host ("##INFO Erro interno: " + $_.Exception.Message)
+        $global:LASTEXITCODE = 1
+    }
+}
+
+function Invoke-DriverUpdate {
+    Write-Host "##INFO Buscando drivers oficiais pelo Windows Update..."
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $result = $searcher.Search("IsInstalled=0 and Type='Driver'")
+        if ($result.Updates.Count -eq 0) { Write-Host "##INFO Todos os drivers ja estao atualizados"; $global:LASTEXITCODE = 0; return }
+        Write-Host ("##INFO Encontrados " + $result.Updates.Count + " drivers pendentes. Baixando...")
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $result.Updates
+        $downloader.Download()
+        Write-Host "##INFO Instalando drivers na maquina..."
+        $installer = $session.CreateUpdateInstaller()
+        $installer.Updates = $result.Updates
+        $installResult = $installer.Install()
+        $global:LASTEXITCODE = if ($installResult.ResultCode -eq 2) { 0 } else { $installResult.ResultCode }
+    } catch {
+        Write-Host ("##INFO Erro ao buscar drivers: " + $_.Exception.Message)
+        $global:LASTEXITCODE = 1
+    }
+}
+
+# =====================================================================
+# FUNÇÕES DE INSTALAÇÃO DE APLICATIVOS E LOJAS (COM TIMEOUT)
+# =====================================================================
+
 function Get-VerifiedInstaller {
     param([string]$Uri, [string]$FileName, [string]$PublisherPattern)
     $path = Join-Path $env:TEMP $FileName
-    Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -ErrorAction Stop
+    Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
     $signature = Get-AuthenticodeSignature -FilePath $path
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch $PublisherPattern) {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
@@ -266,39 +511,14 @@ function Get-AdobeVerifiedDownload {
     if ($parsed.Scheme -ne 'https' -or $parsed.Host -notin @('ardownload.adobe.com','ardownload2.adobe.com')) {
         throw 'Link fora dos servidores da Adobe.'
     }
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $path = Join-Path $env:TEMP ('AdobeReader_' + [guid]::NewGuid().ToString('N') + '.exe')
-    foreach ($method in @('PowerShell','BITS','curl')) {
-        try {
-            switch ($method) {
-                'PowerShell' { Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -TimeoutSec 900 -ErrorAction Stop }
-                'BITS' {
-                    Import-Module BitsTransfer -ErrorAction Stop
-                    $job = Start-BitsTransfer -Source $Uri -Destination $path -Asynchronous -ErrorAction Stop
-                    $deadline = (Get-Date).AddMinutes(15)
-                    while ($true) {
-                        $job = Get-BitsTransfer -Id $job.Id -ErrorAction Stop
-                        if ($job.JobState -eq 'Transferred') { Complete-BitsTransfer -BitsJob $job -ErrorAction Stop; break }
-                        if ($job.JobState -in @('Error','Cancelled','Suspended') -or (Get-Date) -gt $deadline) { throw 'BITS interrompido' }
-                        Start-Sleep -Seconds 2
-                    }
-                }
-                'curl' {
-                    $curl = Get-Command curl.exe -ErrorAction Stop
-                    & $curl.Source --fail --location --silent --show-error --connect-timeout 30 --max-time 900 --retry 2 --output $path $Uri
-                    if ($LASTEXITCODE -ne 0) { throw 'curl falhou' }
-                }
-            }
-            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) { throw 'Arquivo incompleto' }
-            $sig = Get-AuthenticodeSignature -FilePath $path
-            if ($sig.Status -ne 'Valid' -or -not $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatch '(?i)(CN|O)=Adobe (Inc\.|Systems Incorporated)(?:,|$)') {
-                throw 'Assinatura Adobe invalida'
-            }
+    if (Download-FileSafe -Uri $Uri -OutFile $path -TimeoutSec 240) {
+        $sig = Get-AuthenticodeSignature -FilePath $path
+        if ($sig.Status -eq 'Valid' -and $sig.SignerCertificate -and $sig.SignerCertificate.Subject -match '(?i)(CN|O)=Adobe (Inc\.|Systems Incorporated)(?:,|$)') {
             return $path
-        } catch {
-            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         }
     }
+    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
     throw 'Falha ao baixar instalador Adobe'
 }
 
@@ -316,12 +536,12 @@ function Get-AdobeDownloadCandidates {
     $url = $null
     try {
         $headers = @{ 'User-Agent' = 'Windows-Installer-Menu'; 'Accept' = 'application/vnd.github+json' }
-        $listing = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/a/Adobe/Acrobat/Reader/64-bit' -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+        $listing = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/a/Adobe/Acrobat/Reader/64-bit' -Headers $headers -TimeoutSec 20 -ErrorAction Stop
         $versions = @($listing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+\.\d+\.\d+$' } | Sort-Object { [version]$_.name } -Descending | Select-Object -First 3)
         foreach ($version in $versions) {
             try {
                 $manifestUrl = 'https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/a/Adobe/Acrobat/Reader/64-bit/' + $version.name + '/Adobe.Acrobat.Reader.64-bit.installer.yaml'
-                $manifest = Invoke-WebRequest -Uri $manifestUrl -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+                $manifest = Invoke-WebRequest -Uri $manifestUrl -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
                 $match = [regex]::Match([string]$manifest.Content, '(?m)^\s*InstallerUrl:\s*(https://ardownload(?:2)?\.adobe\.com/[^\s]+_MUI\.exe)\s*$')
                 if ($match.Success) { $url = $match.Groups[1].Value; break }
             } catch {}
@@ -348,8 +568,7 @@ function Install-AdobeReaderDirect {
         return
     }
     try {
-        $proc = Start-Process -FilePath $setup -ArgumentList '-sfx_nu /sAll /rs /msi EULA_ACCEPT=YES' -Wait -PassThru -ErrorAction Stop
-        $code = [int]$proc.ExitCode
+        $code = Invoke-ProcessWithTimeout -FilePath $setup -ArgumentList '-sfx_nu /sAll /rs /msi EULA_ACCEPT=YES' -TimeoutSeconds 240
         if ($code -in @(0,3010,1641)) { $global:LASTEXITCODE = 0 }
         elseif ($code -eq 1638 -and (Test-AdobeReaderInstalled)) { $global:LASTEXITCODE = -1978335189 }
         else { $global:LASTEXITCODE = if ($code -ne 0) { $code } else { 1 } }
@@ -360,38 +579,13 @@ function Install-AdobeReaderDirect {
 
 function Get-PackageVerifiedDownload {
     param([string]$Uri, [string]$Name, [string]$Extension, [string]$Sha256)
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $path = Join-Path $env:TEMP ('Setup_' + [guid]::NewGuid().ToString('N') + '.' + $Extension)
-    foreach ($method in @('PowerShell','BITS','curl')) {
-        try {
-            switch ($method) {
-                'PowerShell' { Invoke-WebRequest -Uri $Uri -OutFile $path -UseBasicParsing -TimeoutSec 900 -ErrorAction Stop }
-                'BITS' {
-                    Import-Module BitsTransfer -ErrorAction Stop
-                    $job = Start-BitsTransfer -Source $Uri -Destination $path -Asynchronous -ErrorAction Stop
-                    $deadline = (Get-Date).AddMinutes(15)
-                    while ($true) {
-                        $job = Get-BitsTransfer -Id $job.Id -ErrorAction Stop
-                        if ($job.JobState -eq 'Transferred') { Complete-BitsTransfer -BitsJob $job -ErrorAction Stop; break }
-                        if ($job.JobState -in @('Error','Cancelled','Suspended') -or (Get-Date) -gt $deadline) { throw 'BITS interrompido' }
-                        Start-Sleep -Seconds 2
-                    }
-                }
-                'curl' {
-                    $curl = Get-Command curl.exe -ErrorAction Stop
-                    & $curl.Source --fail --location --silent --show-error --connect-timeout 30 --max-time 900 --retry 2 --output $path $Uri
-                    if ($LASTEXITCODE -ne 0) { throw 'curl falhou' }
-                }
-            }
-            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -lt 1000000) { throw 'Arquivo incompleto' }
-            if ($Sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $Sha256) {
-                throw 'Hash invalido'
-            }
+    if (Download-FileSafe -Uri $Uri -OutFile $path -TimeoutSec 180) {
+        if ($Sha256 -match '^[A-Fa-f0-9]{64}$' -and (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash -eq $Sha256) {
             return $path
-        } catch {
-            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         }
     }
+    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
     throw 'Falha ao baixar pacote'
 }
 
@@ -414,11 +608,11 @@ function Get-MenuPackageMetadata {
     }
     try {
         $headers = @{ 'User-Agent'='Windows-Installer-Menu'; 'Accept'='application/vnd.github+json' }
-        $listing = Invoke-RestMethod -Uri ('https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/' + $repo) -Headers $headers -TimeoutSec 30 -ErrorAction Stop
+        $listing = Invoke-RestMethod -Uri ('https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/' + $repo) -Headers $headers -TimeoutSec 20 -ErrorAction Stop
         $versions = @($listing | Where-Object { $_.type -eq 'dir' -and $_.name -match '^\d+\.\d+\.\d+(\.\d+)?$' } | Sort-Object { [version]$_.name } -Descending | Select-Object -First 3)
         foreach ($version in $versions) {
             try {
-                $manifest = Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/' + $repo + '/' + $version.name + '/' + $Id + '.installer.yaml') -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+                $manifest = Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/' + $repo + '/' + $version.name + '/' + $Id + '.installer.yaml') -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
                 $text = [string]$manifest.Content
                 if ($Id -eq 'RARLab.WinRAR') {
                     $m = [regex]::Match($text, '(?ms)^- InstallerLocale: pt-BR\s+Architecture: x64\s+InstallerUrl: (https://www\.rarlab\.com/rar/winrar-x64-\d+br\.exe)\s+InstallerSha256: ([A-Fa-f0-9]{64})')
@@ -458,8 +652,7 @@ function Install-MenuPackageDirect {
             $setup=Join-Path $folder $meta.Nested
             if (-not (Test-Path -LiteralPath $setup)) { throw 'Instalador nao encontrado' }
         }
-        $proc=Start-Process -FilePath $setup -ArgumentList $meta.Args -Wait -PassThru -ErrorAction Stop
-        $code=[int]$proc.ExitCode
+        $code = Invoke-ProcessWithTimeout -FilePath $setup -ArgumentList $meta.Args -TimeoutSeconds 180
         if ($code -in @(0,3010,1641)) {
             if (Test-MenuPackageInstalled -Id $Id) { $global:LASTEXITCODE=0 } else { $global:LASTEXITCODE=1 }
         } else { $global:LASTEXITCODE=$code }
@@ -474,9 +667,6 @@ function Install-MenuPackageDirect {
 function Install-AppFallback {
     param([string]$Id)
     $global:LASTEXITCODE = 1
-    $wingetCode = 1
-    $wingetPath = $null
-
     Ensure-WinGetInstalled
 
     if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner') -and (Test-MenuPackageInstalled -Id $Id)) {
@@ -487,31 +677,18 @@ function Install-AppFallback {
         return
     }
     try {
-        $wingetCommand = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($wingetCommand) { $wingetPath = $wingetCommand.Source }
-        if (-not $wingetPath) {
-            try {
-                $appInstaller = Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-                if ($appInstaller) {
-                    $candidate = Join-Path $appInstaller.InstallLocation 'winget.exe'
-                    if (Test-Path $candidate) { $wingetPath = $candidate }
-                }
-            } catch {}
-        }
-        if ($wingetPath) {
-            & $wingetPath install --exact --id $Id --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-            $wingetCode = [int]$LASTEXITCODE
-            if ($wingetCode -eq 0 -or $wingetCode -eq -1978335189) {
-                $global:LASTEXITCODE = $wingetCode
-                return
-            }
+        $wingetCode = Invoke-WingetSafe -Id $Id -TimeoutSeconds 240
+        if ($wingetCode -eq 0 -or $wingetCode -eq -1978335189) {
+            $global:LASTEXITCODE = $wingetCode
+            return
         }
         switch ($Id) {
             'Google.Chrome' {
                 $fileName = 'ChromeEnterprise_' + [guid]::NewGuid().ToString('N') + '.msi'
                 $setup = Get-VerifiedInstaller -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi' -FileName $fileName -PublisherPattern '(?i)(CN=Google LLC|O=Google LLC)'
-                $proc = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList "/i `"$setup`" /qn /norestart" -Wait -PassThru
-                $global:LASTEXITCODE = [int]$proc.ExitCode
+                $code = Invoke-ProcessWithTimeout -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList "/i `"$setup`" /qn /norestart" -TimeoutSeconds 180
+                Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
+                $global:LASTEXITCODE = $code
                 return
             }
             'RARLab.WinRAR' { Install-MenuPackageDirect -Id $Id; return }
@@ -645,11 +822,13 @@ try {
 $global:tasks = New-Object System.Collections.ArrayList
 $global:totalEtapas = 0
 $global:etapaAtual = 0
+$global:isBatchTask = $false
 
 function Log($msg) { 
     $logBox.AppendText((Get-Date -Format 'HH:mm:ss') + "  " + $msg + "`r`n") 
     $logBox.SelectionStart = $logBox.Text.Length
     $logBox.ScrollToCaret()
+    Update-CustomScroll
 }
 
 function Start-Task($titulo, $script, $total = 1) {
@@ -669,17 +848,23 @@ function Start-Task($titulo, $script, $total = 1) {
 
     $global:totalEtapas = $total
     $global:etapaAtual = 0
+    $progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 240)
+    $progressPulse.Visible = $true
 
     if ($total -gt 1) {
+        $global:isBatchTask = $true
         $global:progressMax = $total
-        $global:progressVal = 0
-        Update-CustomProgress 0
+        $global:progressVal = 0.2
+        $global:progressTarget = 0.8
+        Update-CustomProgress 0.2
         $lblStatus.Text = "Instalando lote: $titulo (0/$total)..."
         $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 180)
     } else {
+        $global:isBatchTask = $false
         $global:progressMax = 100
-        $global:progressVal = 50
-        Update-CustomProgress 50
+        $global:progressVal = 15
+        $global:progressTarget = 92
+        Update-CustomProgress 15
         $qtdFila = $global:tasks.Count
         if ($qtdFila -gt 1) {
             $lblStatus.Text = "Instalando: $titulo (Fila: $qtdFila tarefas)..."
@@ -734,7 +919,7 @@ $lblSplashSub.Location = New-Object System.Drawing.Point(85, 85)
 $splashPanel.Controls.Add($lblSplashSub)
 
 $lblSplashVer = New-Object System.Windows.Forms.Label
-$lblSplashVer.Text = "Versão 0.62 — Inicializando Ambiente..."
+$lblSplashVer.Text = "Versão 0.71 — Inicializando Ambiente..."
 $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
 $lblSplashVer.AutoSize = $true
@@ -771,7 +956,7 @@ $splash.Dispose()
 
 
 # =====================================================================
-# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA PRINCIPAL
+# SEÇÃO 6: CRIAÇÃO DA INTERFACE GRÁFICA PRINCIPAL (1120x690 COMPACTA)
 # =====================================================================
 
 $programIcon = [System.Drawing.SystemIcons]::Application
@@ -895,7 +1080,7 @@ $customToolTip.BringToFront()
 # Cabeçalho interno
 $header = New-Object System.Windows.Forms.Panel
 $header.Location = New-Object System.Drawing.Point(0, 35)
-$header.Size = New-Object System.Drawing.Size(1120, 70)
+$header.Size = New-Object System.Drawing.Size(1120, 68)
 $header.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $form.Controls.Add($header)
 
@@ -904,7 +1089,7 @@ $title.Text = "ASSISTENTE DE FORMATAÇÃO PRO"
 $title.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
 $title.ForeColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
 $title.AutoSize = $true
-$title.Location = New-Object System.Drawing.Point(24, 10)
+$title.Location = New-Object System.Drawing.Point(24, 9)
 $header.Controls.Add($title)
 
 $subTitle = New-Object System.Windows.Forms.Label
@@ -912,44 +1097,82 @@ $subTitle.Text = "Central de Automação e Pós-Instalação"
 $subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $subTitle.ForeColor = [System.Drawing.Color]::FromArgb(150, 160, 175)
 $subTitle.AutoSize = $true
-$subTitle.Location = New-Object System.Drawing.Point(28, 38)
+$subTitle.Location = New-Object System.Drawing.Point(28, 37)
 $header.Controls.Add($subTitle)
 
-# Botão Sair
-$sair = New-Object System.Windows.Forms.Button
-$sair.Text = "Encerrar Ferramenta"
-$sair.Size = New-Object System.Drawing.Size(170, 42)
-$sair.Location = New-Object System.Drawing.Point(24, 625)
-$form.Controls.Add($sair)
-$sair.BringToFront()
-$sair.FlatStyle = "Flat"
-$sair.FlatAppearance.BorderSize = 0
-$sair.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
-$sair.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60)
-$sair.ForeColor = [System.Drawing.Color]::White
-$sair.Cursor = [System.Windows.Forms.Cursors]::Hand
-$sair.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(220, 60, 70) })
-$sair.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60) })
-$sair.Add_Click({ 
-    try {
-        Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableIOAVProtection $false -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableScriptScanning $false -ErrorAction SilentlyContinue
-        Set-MpPreference -SubmitSamplesConsent 0 -ErrorAction SilentlyContinue
-        Set-MpPreference -MAPSReporting 1 -ErrorAction SilentlyContinue
-    } catch {}
-    $form.Close() 
-})
+# =====================================================================
+# INDICADOR DE STATUS DE REDE / CABO ETHERNET (CANTO DIREITO DO HEADER)
+# =====================================================================
+$netBadge = New-Object System.Windows.Forms.Panel
+$netBadge.Location = New-Object System.Drawing.Point(806, 14)
+$netBadge.Size = New-Object System.Drawing.Size(290, 40)
+$netBadge.BackColor = [System.Drawing.Color]::FromArgb(28, 32, 42)
+$netBadge.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$header.Controls.Add($netBadge)
 
-# Rótulos das Seções
+$netDot = New-Object System.Windows.Forms.Panel
+$netDot.Location = New-Object System.Drawing.Point(12, 14)
+$netDot.Size = New-Object System.Drawing.Size(12, 12)
+$netDot.BackColor = [System.Drawing.Color]::FromArgb(120, 130, 145)
+$netBadge.Controls.Add($netDot)
+
+$lblNetStatus = New-Object System.Windows.Forms.Label
+$lblNetStatus.Text = "Verificando conexão..."
+$lblNetStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$lblNetStatus.ForeColor = [System.Drawing.Color]::FromArgb(200, 210, 225)
+$lblNetStatus.AutoSize = $true
+$lblNetStatus.Location = New-Object System.Drawing.Point(32, 11)
+$netBadge.Controls.Add($lblNetStatus)
+
+function Update-NetworkStatus {
+    try {
+        $nics = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object {
+            $_.OperationalStatus -eq [System.Net.NetworkInformation.OperationalStatus]::Up -and
+            $_.NetworkInterfaceType -ne [System.Net.NetworkInformation.NetworkInterfaceType]::Loopback -and
+            $_.NetworkInterfaceType -ne [System.Net.NetworkInformation.NetworkInterfaceType]::Tunnel -and
+            $_.Description -notmatch '(?i)Virtual|Hyper-V|VMware|VirtualBox|TAP-|VPN|Pseudo|Bluetooth'
+        }
+
+        $eth = $nics | Where-Object { $_.NetworkInterfaceType -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Ethernet } | Select-Object -First 1
+        $wifi = $nics | Where-Object { $_.NetworkInterfaceType -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Wireless80211 } | Select-Object -First 1
+
+        if ($eth) {
+            $mbps = [Math]::Round($eth.Speed / 1000000)
+            $speedTxt = if ($mbps -ge 1000) { "$([Math]::Round($mbps / 1000, 1)) Gbps" } elseif ($mbps -gt 0) { "$mbps Mbps" } else { "Ativo" }
+            $lblNetStatus.Text = "CABO ETHERNET • $speedTxt"
+            $lblNetStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 165)
+            $netDot.BackColor = [System.Drawing.Color]::FromArgb(0, 230, 145)
+            $netBadge.BackColor = [System.Drawing.Color]::FromArgb(22, 42, 36)
+        } elseif ($wifi) {
+            $lblNetStatus.Text = "WI-FI ATIVO • Conecte o Cabo"
+            $lblNetStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 205, 65)
+            $netDot.BackColor = [System.Drawing.Color]::FromArgb(255, 190, 40)
+            $netBadge.BackColor = [System.Drawing.Color]::FromArgb(46, 38, 22)
+        } else {
+            $lblNetStatus.Text = "SEM REDE • Cabo Desconectado"
+            $lblNetStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 95, 105)
+            $netDot.BackColor = [System.Drawing.Color]::FromArgb(235, 65, 75)
+            $netBadge.BackColor = [System.Drawing.Color]::FromArgb(48, 24, 28)
+        }
+    } catch {
+        $lblNetStatus.Text = "Status de rede indisponível"
+    }
+}
+
+Update-NetworkStatus
+
+$netTimer = New-Object System.Windows.Forms.Timer
+$netTimer.Interval = 3000
+$netTimer.Add_Tick({ Update-NetworkStatus })
+$netTimer.Start()
+
+# Rótulos das Seções (Parte Superior em 3 Colunas)
 $individualTitle = New-Object System.Windows.Forms.Label
 $individualTitle.Text = "AÇÕES INDIVIDUAIS"
 $individualTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $individualTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $individualTitle.AutoSize = $true
-$individualTitle.Location = New-Object System.Drawing.Point(24, 115)
+$individualTitle.Location = New-Object System.Drawing.Point(24, 112)
 $form.Controls.Add($individualTitle)
 
 $bundleTitle = New-Object System.Windows.Forms.Label
@@ -957,31 +1180,31 @@ $bundleTitle.Text = "PACOTES & MANUTENÇÃO"
 $bundleTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $bundleTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $bundleTitle.AutoSize = $true
-$bundleTitle.Location = New-Object System.Drawing.Point(24, 385)
+$bundleTitle.Location = New-Object System.Drawing.Point(24, 232)
 $form.Controls.Add($bundleTitle)
 
 
 # =====================================================================
-# SEÇÃO 7: DEFINIÇÃO DOS BOTÕES E AÇÕES DO MENU
+# SEÇÃO 7: DEFINIÇÃO DOS BOTÕES (GRADE SUPERIOR DE 3 COLUNAS)
 # =====================================================================
 
 $actions = [ordered]@{
-    "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
+    "Ativação Windows"             = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
     "Instalar Google Chrome"     = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
     "Instalar WinRAR"            = { Start-Task "WinRAR" (Lote @(Passo 1 1 "WinRAR" (W "RARLab.WinRAR"))) }
     "Instalar MSI Afterburner"   = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
-    "Instalar Adobe Reader"     = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
+    "Instalar Adobe Reader"      = { Start-Task "Adobe Reader" (Lote @(Passo 1 1 "Adobe Acrobat Reader" (W "Adobe.Acrobat.Reader.64-bit"))) }
     "Instalar Apenas o Office" = { Start-Task "Office e atalhos" (Lote @(Passo 1 1 "Office" $officeInstallAndShortcuts)) }
 
-    # Bloco de Pacotes Reorganizado Logicamente
+    # Bloco de Pacotes Blindado contra Travamentos
     "Kit Gamer" = {
         Start-Task "Kit Gamer" (Lote @(
-            'Write-Host "##AGORA [1/6] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"',
-            'Write-Host "##AGORA [2/6] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"',
-            'Write-Host "##AGORA [3/6] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"',
-            'Write-Host "##AGORA [4/6] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"',
-            'Write-Host "##AGORA [5/6] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"',
-            (Passo 6 6 "Aplicativo de Video da Placa Mae/GPU" "Install-GamerGPUApp")
+            (Passo 1 6 "Desempenho Maximo" "Install-GamerPowerPlan"),
+            (Passo 2 6 ".NET Framework 3.5" "Install-GamerNetFx3"),
+            (Passo 3 6 ".NET Desktop Runtime 8" "Install-GamerDotNet8"),
+            (Passo 4 6 "Visual C++ Redistributable" "Install-GamerVCRedist"),
+            (Passo 5 6 "DirectX Runtimes" "Install-GamerDirectX"),
+            (Passo 6 6 "Aplicativo Oficial da GPU" "Install-GamerGPUApp")
         )) -total 6
     }
 
@@ -1022,7 +1245,7 @@ $actions = [ordered]@{
 }
 
 $packageTooltips = @{
-    "Kit Gamer"                   = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO)`n5. DirectX Runtimes (Jun 2010)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
+    "Kit Gamer"                     = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO/MS)`n5. DirectX Runtimes (WinGet/Web/Offline)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
     "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
     "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
     "INSTALAR TUDO + Office"      = "Pacote Completo Avançado:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• MSI Afterburner`n• Microsoft Office (com atalhos)";
@@ -1087,17 +1310,19 @@ foreach ($name in $actions.Keys) {
     }
 
     if ($actionNumber -le 6) {
-        $column = ($actionNumber - 1) % 2
-        $row = [int][Math]::Floor(($actionNumber - 1) / 2)
-        $btn.Size = New-Object System.Drawing.Size(272, 42)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($column * 305)), (140 + ($row * 48)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($column * 305)), (152 + ($row * 48)))
+        # 3 Colunas x 2 Linhas (01 a 06)
+        $col = ($actionNumber - 1) % 3
+        $row = [int][Math]::Floor(($actionNumber - 1) / 3)
+        $btn.Size = New-Object System.Drawing.Size(316, 38)
+        $btn.Location = New-Object System.Drawing.Point((48 + ($col * 364)), (134 + ($row * 44)))
+        $lblNum.Location = New-Object System.Drawing.Point((24 + ($col * 364)), (144 + ($row * 44)))
     } else {
-        $colIdx = ($actionNumber - 7) % 2
-        $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 2)
-        $btn.Size = New-Object System.Drawing.Size(272, 42)
-        $btn.Location = New-Object System.Drawing.Point((44 + ($colIdx * 305)), (410 + ($rowIdx * 48)))
-        $lblNum.Location = New-Object System.Drawing.Point((16 + ($colIdx * 305)), (422 + ($rowIdx * 48)))
+        # 3 Colunas x 3 Linhas (07 a 14)
+        $colIdx = ($actionNumber - 7) % 3
+        $rowIdx = [int][Math]::Floor(($actionNumber - 7) / 3)
+        $btn.Size = New-Object System.Drawing.Size(316, 38)
+        $btn.Location = New-Object System.Drawing.Point((48 + ($colIdx * 364)), (254 + ($rowIdx * 44)))
+        $lblNum.Location = New-Object System.Drawing.Point((24 + ($colIdx * 364)), (264 + ($rowIdx * 44)))
     }
 
     $btn.BackColor = $baseBg
@@ -1119,19 +1344,19 @@ $modalDrag = {
     }
 }
 
-# 13. Lojas de Jogos
+# 13. Lojas de Jogos (Coluna 1, Linha 3 dos Pacotes)
 $lblNum13 = New-Object System.Windows.Forms.Label
 $lblNum13.Text = "13"
 $lblNum13.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
 $lblNum13.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
 $lblNum13.AutoSize = $true
-$lblNum13.Location = New-Object System.Drawing.Point(16, 566)
+$lblNum13.Location = New-Object System.Drawing.Point(24, 352)
 $form.Controls.Add($lblNum13)
 
 $btnOpenStoresModal = New-Object System.Windows.Forms.Button
 $btnOpenStoresModal.Text = "Lojas de Jogos"
-$btnOpenStoresModal.Size = New-Object System.Drawing.Size(272, 42)
-$btnOpenStoresModal.Location = New-Object System.Drawing.Point(44, 554)
+$btnOpenStoresModal.Size = New-Object System.Drawing.Size(316, 38)
+$btnOpenStoresModal.Location = New-Object System.Drawing.Point(48, 342)
 $btnOpenStoresModal.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnOpenStoresModal.FlatAppearance.BorderSize = 0
 $btnOpenStoresModal.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 55)
@@ -1324,19 +1549,19 @@ $btnOpenStoresModal.Add_Click({
 $form.Controls.Add($btnOpenStoresModal)
 
 
-# 14. O que deseja fazer no PC? (Instalação Personalizada Total)
+# 14. O que deseja fazer no PC? (Colunas 2 e 3 unificadas na Linha 3 — Destaque Largo!)
 $lblNum14 = New-Object System.Windows.Forms.Label
 $lblNum14.Text = "14"
 $lblNum14.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]8.5), ([System.Drawing.FontStyle]::Bold)
 $lblNum14.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
 $lblNum14.AutoSize = $true
-$lblNum14.Location = New-Object System.Drawing.Point(321, 566)
+$lblNum14.Location = New-Object System.Drawing.Point(388, 352)
 $form.Controls.Add($lblNum14)
 
 $btnWhatToDo = New-Object System.Windows.Forms.Button
-$btnWhatToDo.Text = "O que deseja fazer no PC?"
-$btnWhatToDo.Size = New-Object System.Drawing.Size(272, 42)
-$btnWhatToDo.Location = New-Object System.Drawing.Point(349, 554)
+$btnWhatToDo.Text = "O que deseja fazer no PC?  (Instalação Personalizada Total)"
+$btnWhatToDo.Size = New-Object System.Drawing.Size(680, 38)
+$btnWhatToDo.Location = New-Object System.Drawing.Point(412, 342)
 $btnWhatToDo.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnWhatToDo.FlatAppearance.BorderSize = 0
 $btnWhatToDo.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
@@ -1348,7 +1573,7 @@ $btnWhatToDo.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb
 
 $btnWhatToDo.Add_Click({
     $modalPC = New-Object System.Windows.Forms.Form
-    $modalPC.ClientSize = New-Object System.Drawing.Size(460, 450)
+    $modalPC.ClientSize = New-Object System.Drawing.Size(460, 530)
     $modalPC.StartPosition = "CenterParent"
     $modalPC.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $modalPC.BackColor = [System.Drawing.Color]::FromArgb(28, 30, 38)
@@ -1380,7 +1605,6 @@ $btnWhatToDo.Add_Click({
 
     $lblModalTitlePC = New-Object System.Windows.Forms.Label
     $lblModalTitlePC.Text = "INSTALAÇÃO PERSONALIZADA TOTAL:"
-    # CORREÇÃO DA FONTE: Criada com tamanho e estilo de forma segura
     $lblModalTitlePC.Font = New-Object System.Drawing.Font -ArgumentList "Segoe UI", ([single]9.5), ([System.Drawing.FontStyle]::Bold)
     $lblModalTitlePC.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
     $lblModalTitlePC.AutoSize = $true
@@ -1396,7 +1620,7 @@ $btnWhatToDo.Add_Click({
     $chkSelectAllPC = New-Object System.Windows.Forms.CheckBox
     $chkSelectAllPC.Text = "Marcar / Desmarcar Todos"
     $chkSelectAllPC.AutoSize = $true
-    $chkSelectAllPC.Location = New-Object System.Drawing.Point((430 - $chkSelectAllPC.PreferredSize.Width), 365)
+    $chkSelectAllPC.Location = New-Object System.Drawing.Point((430 - $chkSelectAllPC.PreferredSize.Width), 445)
     $chkSelectAllPC.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
     $chkSelectAllPC.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $chkSelectAllPC.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -1417,28 +1641,30 @@ $btnWhatToDo.Add_Click({
     $modalPC.Controls.Add($modalToolTipPC)
     $modalToolTipPC.BringToFront()
 
-    $kitGamerScript = '
-        Write-Host "##AGORA [1/6] Ativando Desempenho Maximo..."; $guid = (powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61); if ($guid -match "([a-f0-9\-]{36})") { powercfg -setactive $Matches[1] }; Write-Host "##OK Desempenho Maximo"
-        Write-Host "##AGORA [2/6] Habilitando .NET Framework 3.5..."; DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet | Out-Null; Write-Host "##OK .NET Framework 3.5"
-        Write-Host "##AGORA [3/6] Instalando .NET Desktop Runtime..."; $ok = $false; try { winget install -e --id Microsoft.DotNet.DesktopRuntime.8 --source winget --silent --accept-package-agreements --accept-source-agreements; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { $ok = $true } } catch {}; if (-not $ok) { $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe", "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"); foreach ($u in $urls) { try { $p = "$env:TEMP\dotnet_runtime.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { $proc = Start-Process -FilePath $p -ArgumentList "/install /quiet /norestart" -Wait -PassThru; if ($proc.ExitCode -eq 0) { $ok = $true; break } } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dotnet_runtime.exe" -Force -ErrorAction SilentlyContinue } } }; if (-not $ok) { throw ".NET Desktop Runtime falhou" }; Write-Host "##OK .NET Desktop Runtime"
-        Write-Host "##AGORA [4/6] Instalando Visual C++ Redistributable..."; $ok = $false; $vcUrls = @("https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe", "https://github.com/ChrisTitusTech/winutil/raw/main/vcredist.exe"); foreach ($u in $vcUrls) { try { $p = "$env:TEMP\vcredist.exe"; Invoke-WebRequest -Uri $u -OutFile $p -UseBasicParsing; if ((Get-Item $p).Length -gt 1000000) { Start-Process -FilePath $p -ArgumentList "-y /ai /q" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\vcredist.exe" -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "Visual C++ falhou" }; Write-Host "##OK Visual C++"
-        Write-Host "##AGORA [5/6] Instalando DirectX Runtimes..."; $ok = $false; $dxUrls = @("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-B9BF-ACAF96D5B92F/directx_jun2010_redist.exe", "https://archive.org/download/directx_jun2010_redist/directx_jun2010_redist.exe"); foreach ($u in $dxUrls) { try { $d = "$env:TEMP\dxsetup.exe"; Invoke-WebRequest -Uri $u -OutFile $d -UseBasicParsing; if ((Get-Item $d).Length -gt 1000000) { Start-Process -FilePath $d -ArgumentList "/Q /T:$env:TEMP\DX" -Wait; Start-Process -FilePath "$env:TEMP\DX\DXSETUP.exe" -ArgumentList "/silent" -Wait; $ok = $true; break } } catch {} finally { Remove-Item -LiteralPath "$env:TEMP\dxsetup.exe" -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$env:TEMP\DX" -Recurse -Force -ErrorAction SilentlyContinue } }; if (-not $ok) { throw "DirectX falhou" }; Write-Host "##OK DirectX"
-        Install-GamerGPUApp
-    '
-
     $allCustomItems = [ordered]@{
         "Google Chrome"          = @{ Cmd = (W "Google.Chrome"); Desc = "Instala o navegador Google Chrome." }
         "WinRAR"                 = @{ Cmd = (W "RARLab.WinRAR"); Desc = "Instala o compactador WinRAR com chave de registro ativa." }
         "MSI Afterburner"        = @{ Cmd = (W "Guru3D.Afterburner"); Desc = "Instala o monitorador de hardware MSI Afterburner." }
         "Adobe Acrobat Reader"   = @{ Cmd = (W "Adobe.Acrobat.Reader.64-bit"); Desc = "Instala o leitor oficial de arquivos PDF Adobe Reader." }
         "Microsoft Office"       = @{ Cmd = $officeInstallAndShortcuts; Desc = "Instala o Microsoft Office 365 com atalhos na Área de Trabalho." }
-        "Kit Gamer (Completo)"   = @{ Cmd = $kitGamerScript; Desc = "Desempenho máximo, runtimes de C++, .NET, DirectX e App da GPU." }
+        
+        # Kit Gamer Desmembrado (Funções Blindadas com Timeout)
+        "Desempenho Máximo"      = @{ Cmd = "Install-GamerPowerPlan"; Desc = "Ativa o plano oculto de Desempenho Máximo de Energia do Windows." }
+        ".NET Framework 3.5"     = @{ Cmd = "Install-GamerNetFx3"; Desc = "Habilita o recurso essencial .NET Framework 3.5 para jogos e apps antigos." }
+        ".NET Desktop Runtime 8" = @{ Cmd = "Install-GamerDotNet8"; Desc = "Instala os runtimes modernos do .NET 8 para aplicações atuais." }
+        "Visual C++ Redist."     = @{ Cmd = "Install-GamerVCRedist"; Desc = "Instala os pacotes Visual C++ (WinGet, AIO ou Oficial MS sem travar)." }
+        "DirectX Runtimes"       = @{ Cmd = "Install-GamerDirectX"; Desc = "Instala o DirectX (WinGet, Web Installer ou Offline Jun 2010)." }
+        "App Oficial da GPU"     = @{ Cmd = "Install-GamerGPUApp"; Desc = "Detecta sua placa (NVIDIA, AMD ou Intel) e instala o software oficial de controle." }
+
+        # Lojas de Jogos
         "Steam"                  = @{ Cmd = (W "Valve.Steam"); Desc = "Plataforma líder da Valve para jogos de PC, comunidade e biblioteca digital." }
         "Epic Games Store"       = @{ Cmd = (W "EpicGames.EpicGamesLauncher"); Desc = "Loja da Epic Games com jogos gratuitos semanais e lançamentos de peso." }
         "GOG Galaxy"             = @{ Cmd = (W "GOG.Galaxy"); Desc = "Cliente da GOG sem DRM para gerenciar todos os seus jogos em um só lugar." }
         "EA App"                 = @{ Cmd = (W "ElectronicArts.EAApp"); Desc = "Aplicativo oficial da Electronic Arts para EA Play e franquias Battlefield/Fifa." }
         "Ubisoft Connect"        = @{ Cmd = (W "Ubisoft.Connect"); Desc = "Launcher da Ubisoft para Assassin's Creed, Far Cry e recompensas exclusivas." }
         "Battle.net"             = @{ Cmd = (W "Blizzard.BattleNet"); Desc = "Plataforma oficial da Blizzard para Diablo, World of Warcraft, Overwatch e Call of Duty." }
+        
+        # Manutenção
         "Atualizar Windows"      = @{ Cmd = "Invoke-WindowsUpdate"; Desc = "Busca e instala todas as atualizações pendentes do Windows Update." }
         "Atualizar Drivers"      = @{ Cmd = "Invoke-DriverUpdate"; Desc = "Busca e instala atualizações de drivers oficiais via Windows Update." }
     }
@@ -1447,7 +1673,7 @@ $btnWhatToDo.Add_Click({
     foreach ($cx in @(15, 235)) {
         $cp = New-Object System.Windows.Forms.Panel
         $cp.Location = New-Object System.Drawing.Point($cx, 75)
-        $cp.Size = New-Object System.Drawing.Size(210, 276)
+        $cp.Size = New-Object System.Drawing.Size(210, 355)
         $cp.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
         $modalPC.Controls.Add($cp)
         $colPanelsPC += $cp
@@ -1468,7 +1694,6 @@ $btnWhatToDo.Add_Click({
 
         $chkPC = New-Object System.Windows.Forms.CheckBox
         $chkPC.Text = $itemName
-        # CORREÇÃO DA FONTE: Criada corretamente com os parâmetros esperados pelo .NET
         $chkPC.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
         $chkPC.ForeColor = [System.Drawing.Color]::FromArgb(230, 235, 245)
         $chkPC.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 50)
@@ -1502,7 +1727,7 @@ $btnWhatToDo.Add_Click({
     $btnConfirmPC = New-Object System.Windows.Forms.Button
     $btnConfirmPC.Text = "Instalar Recursos Selecionados"
     $btnConfirmPC.Size = New-Object System.Drawing.Size(400, 42)
-    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 392)
+    $btnConfirmPC.Location = New-Object System.Drawing.Point(30, 472)
     $btnConfirmPC.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnConfirmPC.FlatAppearance.BorderSize = 0
     $btnConfirmPC.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
@@ -1539,7 +1764,7 @@ $btnWhatToDo.Add_Click({
 $form.Controls.Add($btnWhatToDo)
 
 # =====================================================================
-# SEÇÃO 8: PAINEL DE STATUS E LOGS (CONSOLE CUSTOMIZADO COM BARRA 100% ESCURA)
+# SEÇÃO 8: CONSOLE DE TAREFAS FULL-WIDTH (1072px) + BARRA DE ROLAGEM REAL
 # =====================================================================
 
 $logTitle = New-Object System.Windows.Forms.Label
@@ -1547,7 +1772,7 @@ $logTitle.Text = "CONSOLE DE TAREFAS"
 $logTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $logTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 180, 255)
 $logTitle.AutoSize = $true
-$logTitle.Location = New-Object System.Drawing.Point(680, 115)
+$logTitle.Location = New-Object System.Drawing.Point(24, 396)
 $form.Controls.Add($logTitle)
 
 $lblStatus = New-Object System.Windows.Forms.Label
@@ -1555,73 +1780,195 @@ $lblStatus.Text = "Aguardando ação..."
 $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 200)
 $lblStatus.AutoSize = $true
-$lblStatus.Location = New-Object System.Drawing.Point(680, 142)
+$lblStatus.Location = New-Object System.Drawing.Point(210, 395)
 $form.Controls.Add($lblStatus)
 
 $progressBarBg = New-Object System.Windows.Forms.Panel
-$progressBarBg.Location = New-Object System.Drawing.Point(680, 170)
-$progressBarBg.Size = New-Object System.Drawing.Size(416, 8)
+$progressBarBg.Location = New-Object System.Drawing.Point(24, 420)
+$progressBarBg.Size = New-Object System.Drawing.Size(1072, 8)
 $progressBarBg.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $form.Controls.Add($progressBarBg)
 
 $progressBarFill = New-Object System.Windows.Forms.Panel
 $progressBarFill.Location = New-Object System.Drawing.Point(0, 0)
 $progressBarFill.Size = New-Object System.Drawing.Size(0, 8)
-$progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 160, 255)
+$progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 240)
 $progressBarBg.Controls.Add($progressBarFill)
 
-$global:progressMax = 100
-$global:progressVal = 0
+$progressPulse = New-Object System.Windows.Forms.Panel
+$progressPulse.Location = New-Object System.Drawing.Point(-150, 0)
+$progressPulse.Size = New-Object System.Drawing.Size(150, 8)
+$progressPulse.BackColor = [System.Drawing.Color]::FromArgb(110, 235, 255)
+$progressPulse.Visible = $false
+$progressBarBg.Controls.Add($progressPulse)
+$progressPulse.BringToFront()
+
+$global:progressMax = 100.0
+$global:progressVal = 0.0
+$global:progressTarget = 0.0
+$global:pulsePos = -150
 
 function Update-CustomProgress($val) {
-    $global:progressVal = [Math]::Max(0, [Math]::Min($val, $global:progressMax))
+    $global:progressVal = [Math]::Max(0.0, [Math]::Min([double]$val, [double]$global:progressMax))
     if ($global:progressMax -gt 0) {
-        $newWidth = [int](($global:progressVal / $global:progressMax) * 416)
+        $newWidth = [int](($global:progressVal / $global:progressMax) * 1072)
         $progressBarFill.Width = $newWidth
     }
 }
 
+# Timer rápido (35ms) para animação contínua e intermitente da barra de progresso
+$animTimer = New-Object System.Windows.Forms.Timer
+$animTimer.Interval = 35
+$animTimer.Add_Tick({
+    if ($global:tasks.Count -gt 0) {
+        if ($global:progressVal -lt $global:progressTarget) {
+            $step = ($global:progressTarget - $global:progressVal) * 0.015
+            if ($step -lt 0.002) { $step = 0.002 }
+            $global:progressVal = [Math]::Min($global:progressTarget, $global:progressVal + $step)
+            Update-CustomProgress $global:progressVal
+        }
+
+        $progressPulse.Visible = $true
+        $global:pulsePos += 28
+        if ($global:pulsePos -gt 1072) {
+            $global:pulsePos = -150
+        }
+        $progressPulse.Left = $global:pulsePos
+    } else {
+        $progressPulse.Visible = $false
+    }
+})
+$animTimer.Start()
+
 $logContainer = New-Object System.Windows.Forms.Panel
-$logContainer.Location = New-Object System.Drawing.Point(680, 190)
-$logContainer.Size = New-Object System.Drawing.Size(416, 420)
+$logContainer.Location = New-Object System.Drawing.Point(24, 436)
+$logContainer.Size = New-Object System.Drawing.Size(1072, 184)
 $logContainer.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
 $form.Controls.Add($logContainer)
 
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Multiline = $true
 $logBox.ReadOnly = $true
+$logBox.WordWrap = $true
 $logBox.ScrollBars = "None"
-$logBox.Location = New-Object System.Drawing.Point(0, 0)
-$logBox.Size = New-Object System.Drawing.Size(390, 420)
+$logBox.Location = New-Object System.Drawing.Point(10, 6)
+$logBox.Size = New-Object System.Drawing.Size(1036, 172)
 $logBox.BackColor = [System.Drawing.Color]::FromArgb(20, 22, 28)
-$logBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
-$logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$logBox.ForeColor = [System.Drawing.Color]::FromArgb(215, 220, 230)
+$logBox.Font = New-Object System.Drawing.Font("Consolas", 9.5)
 $logBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $logContainer.Controls.Add($logBox)
 
 $customScrollBg = New-Object System.Windows.Forms.Panel
-$customScrollBg.Location = New-Object System.Drawing.Point(398, 0)
-$customScrollBg.Size = New-Object System.Drawing.Size(18, 420)
-$customScrollBg.BackColor = [System.Drawing.Color]::FromArgb(25, 28, 36)
+$customScrollBg.Location = New-Object System.Drawing.Point(1054, 0)
+$customScrollBg.Size = New-Object System.Drawing.Size(18, 184)
+$customScrollBg.BackColor = [System.Drawing.Color]::FromArgb(26, 30, 40)
+$customScrollBg.Cursor = [System.Windows.Forms.Cursors]::Hand
 $logContainer.Controls.Add($customScrollBg)
 
 $customScrollThumb = New-Object System.Windows.Forms.Panel
-$customScrollThumb.Location = New-Object System.Drawing.Point(2, 2)
-$customScrollThumb.Size = New-Object System.Drawing.Size(14, 60)
-$customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(60, 68, 85)
+$customScrollThumb.Location = New-Object System.Drawing.Point(3, 2)
+$customScrollThumb.Size = New-Object System.Drawing.Size(12, 180)
+$customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(75, 85, 105)
+$customScrollThumb.Cursor = [System.Windows.Forms.Cursors]::Hand
 $customScrollBg.Controls.Add($customScrollThumb)
 
-$logBox.Add_TextChanged({
-    $linhasTotais = $logBox.Lines.Count
-    if ($linhasTotais -gt 25) {
-        $ratio = 420 / ($linhasTotais * 16)
-        $thumbHeight = [Math]::Max(30, [int](420 * $ratio))
-        $customScrollThumb.Height = [Math]::Min(420, $thumbHeight)
+# Sincronização completa da Barra de Rolagem (MouseWheel, Arraste e Clique na Trilha)
+$global:scrollDragging = $false
+$global:scrollDragOffsetY = 0
+
+function Get-LogVisibleLines {
+    $lineHeight = [Math]::Max(14, $logBox.Font.Height)
+    return [Math]::Max(1, [int][Math]::Floor($logBox.ClientSize.Height / $lineHeight))
+}
+
+function Update-CustomScroll {
+    if (-not $logBox.IsHandleCreated) { return }
+    $totalLines = [int][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00BA, [IntPtr]::Zero, [IntPtr]::Zero) # EM_GETLINECOUNT
+    $firstVisible = [int][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00CE, [IntPtr]::Zero, [IntPtr]::Zero) # EM_GETFIRSTVISIBLELINE
+    $visibleLines = Get-LogVisibleLines
+    $trackHeight = $customScrollBg.Height - 4
+
+    if ($totalLines -le $visibleLines) {
+        $customScrollThumb.Height = $trackHeight
+        $customScrollThumb.Top = 2
+        return
+    }
+
+    $thumbHeight = [Math]::Max(26, [int](($visibleLines / $totalLines) * $trackHeight))
+    $customScrollThumb.Height = $thumbHeight
+
+    $maxFirst = [Math]::Max(1, $totalLines - $visibleLines)
+    $ratio = [Math]::Max(0.0, [Math]::Min(1.0, $firstVisible / $maxFirst))
+    $maxThumbTop = $trackHeight - $thumbHeight
+    $customScrollThumb.Top = 2 + [int]($ratio * $maxThumbTop)
+}
+
+function Set-LogScrollByThumbTop([int]$desiredTop) {
+    if (-not $logBox.IsHandleCreated) { return }
+    $totalLines = [int][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00BA, [IntPtr]::Zero, [IntPtr]::Zero)
+    $firstVisible = [int][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00CE, [IntPtr]::Zero, [IntPtr]::Zero)
+    $visibleLines = Get-LogVisibleLines
+    if ($totalLines -le $visibleLines) { return }
+
+    $trackHeight = $customScrollBg.Height - 4
+    $maxThumbTop = [Math]::Max(1, $trackHeight - $customScrollThumb.Height)
+    $clampedTop = [Math]::Max(2, [Math]::Min(2 + $maxThumbTop, $desiredTop))
+    $customScrollThumb.Top = $clampedTop
+
+    $ratio = ($clampedTop - 2) / $maxThumbTop
+    $targetLine = [int][Math]::Round($ratio * ($totalLines - $visibleLines))
+    $delta = $targetLine - $firstVisible
+    if ($delta -ne 0) {
+        [void][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00B6, [IntPtr]::Zero, [IntPtr]$delta) # EM_LINESCROLL
+    }
+}
+
+$logBox.Add_MouseWheel({
+    param($sender, $e)
+    $linesToScroll = if ($e.Delta -gt 0) { -3 } else { 3 }
+    [void][WinAPI.Desktop]::SendMessage($logBox.Handle, 0x00B6, [IntPtr]::Zero, [IntPtr]$linesToScroll)
+    Update-CustomScroll
+})
+
+$logBox.Add_KeyUp({ Update-CustomScroll })
+$logBox.Add_TextChanged({ Update-CustomScroll })
+
+$customScrollThumb.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 170, 255) })
+$customScrollThumb.Add_MouseLeave({ if (-not $global:scrollDragging) { $this.BackColor = [System.Drawing.Color]::FromArgb(75, 85, 105) } })
+
+$customScrollThumb.Add_MouseDown({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $global:scrollDragging = $true
+        $global:scrollDragOffsetY = $e.Y
+        $customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(0, 190, 255)
+    }
+})
+
+$customScrollThumb.Add_MouseMove({
+    param($sender, $e)
+    if ($global:scrollDragging) {
+        $ptInBg = $customScrollBg.PointToClient([System.Windows.Forms.Cursor]::Position)
+        Set-LogScrollByThumbTop ($ptInBg.Y - $global:scrollDragOffsetY)
+    }
+})
+
+$customScrollThumb.Add_MouseUp({
+    $global:scrollDragging = $false
+    $customScrollThumb.BackColor = [System.Drawing.Color]::FromArgb(75, 85, 105)
+})
+
+$customScrollBg.Add_MouseDown({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $targetTop = $e.Y - [int]($customScrollThumb.Height / 2)
+        Set-LogScrollByThumbTop $targetTop
     }
 })
 
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 1000
+$timer.Interval = 800
 
 function Ler-Novas($t) {
     if (-not (Test-Path $t.Out)) { return }
@@ -1631,10 +1978,15 @@ function Ler-Novas($t) {
         if ($l -match '^##AGORA \[(\d+)/(\d+)\] (.+)$') {
             Log ("  > Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")")
             $lblStatus.Text = "Instalando agora: " + $matches[3] + " (" + $matches[1] + "/" + $matches[2] + ")"
-            $atual = [int]$matches[1]
-            $totalEtapas = [int]$matches[2]
-            $global:progressMax = $totalEtapas
-            Update-CustomProgress $atual
+            $atual = [double]$matches[1]
+            $totalEtapas = [double]$matches[2]
+            if ($totalEtapas -gt 1) {
+                $global:progressMax = $totalEtapas
+                $baseVal = [Math]::Max(0.2, $atual - 0.85)
+                if ($baseVal -gt $global:progressVal) { $global:progressVal = $baseVal }
+                $global:progressTarget = [Math]::Min($totalEtapas - 0.08, $atual - 0.05)
+                Update-CustomProgress $global:progressVal
+            }
         }
         elseif ($l -match '^##OK (.+)$')   { $t.Ok++;   Log ("  [OK]   " + $matches[1] + " instalado") }
         elseif ($l -match '^##JA (.+)$')   { $t.Ja++;   Log ("  [JA]   " + $matches[1] + " ja estava instalado") }
@@ -1656,13 +2008,17 @@ $timer.Add_Tick({
             if ($global:tasks.Count -gt 0) {
                 $lblStatus.Text = "Ainda em andamento: " + $global:tasks[0].Nome + " (" + $global:tasks.Count + " na fila)"
             } else {
+                $progressPulse.Visible = $false
+                $global:progressTarget = $global:progressMax
                 Update-CustomProgress $global:progressMax
                 if ($t.Erro -gt 0) {
                     $lblStatus.Text = "Concluido com erros - veja o log"
                     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(255, 90, 90)
+                    $progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(220, 65, 75)
                 } else {
                     $lblStatus.Text = "Concluido com sucesso!"
                     $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 160)
+                    $progressBarFill.BackColor = [System.Drawing.Color]::FromArgb(0, 210, 130)
                 }
             }
         }
@@ -1672,22 +2028,49 @@ $timer.Start()
 
 
 # =====================================================================
-# SEÇÃO 9: MARCAS E VERSÃO (DISCRETAS)
+# SEÇÃO 9: RODAPÉ (BOTÃO ENCERRAR, MARCAS E VERSÃO)
 # =====================================================================
+$sair = New-Object System.Windows.Forms.Button
+$sair.Text = "Encerrar Ferramenta"
+$sair.Size = New-Object System.Drawing.Size(170, 38)
+$sair.Location = New-Object System.Drawing.Point(24, 634)
+$form.Controls.Add($sair)
+$sair.BringToFront()
+$sair.FlatStyle = "Flat"
+$sair.FlatAppearance.BorderSize = 0
+$sair.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
+$sair.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60)
+$sair.ForeColor = [System.Drawing.Color]::White
+$sair.Cursor = [System.Windows.Forms.Cursors]::Hand
+$sair.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(220, 60, 70) })
+$sair.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60) })
+$sair.Add_Click({ 
+    try {
+        Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBlockAtFirstSeen $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableIOAVProtection $false -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableScriptScanning $false -ErrorAction SilentlyContinue
+        Set-MpPreference -SubmitSamplesConsent 0 -ErrorAction SilentlyContinue
+        Set-MpPreference -MAPSReporting 1 -ErrorAction SilentlyContinue
+    } catch {}
+    $form.Close() 
+})
+
 $watermark = New-Object System.Windows.Forms.Label
 $watermark.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"
 $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $watermark.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $watermark.AutoSize = $true
-$watermark.Location = New-Object System.Drawing.Point(680, 625)
+$watermark.Location = New-Object System.Drawing.Point(435, 645)
 $form.Controls.Add($watermark)
 
 $versaoLabel = New-Object System.Windows.Forms.Label
-$versaoLabel.Text = "v0.62"
+$versaoLabel.Text = "v0.71"
 $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120)
 $versaoLabel.AutoSize = $true
-$versaoLabel.Location = New-Object System.Drawing.Point(1055, 625)
+$versaoLabel.Location = New-Object System.Drawing.Point(1058, 645)
 $form.Controls.Add($versaoLabel)
 
 
@@ -1695,8 +2078,13 @@ $form.Controls.Add($versaoLabel)
 # EXECUÇÃO E LIMPEZA FINAL DO WINDOWS FORMS
 # =====================================================================
 $form.Show()
+Update-CustomScroll
 [System.Windows.Forms.Application]::Run($form)
 
+$netTimer.Stop()
+$netTimer.Dispose()
+$animTimer.Stop()
+$animTimer.Dispose()
 $timer.Stop()
 $timer.Dispose()
 $form.Dispose()
