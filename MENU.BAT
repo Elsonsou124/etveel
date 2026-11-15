@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-set "APP_VER=v0.75"
+set "APP_VER=v0.76"
 
 :ESCOLHA_MODO
 cls
@@ -493,9 +493,10 @@ function Install-AppFallback {
     if ($Id -eq 'Adobe.Acrobat.Reader.64-bit' -and (Test-AdobeReaderInstalled)) {
         $global:LASTEXITCODE = -1978335189; return
     }
-    try {
+try {
         $wingetCode = Invoke-WingetSafe -Id $Id -TimeoutSeconds 240
         if ($wingetCode -eq 0 -or $wingetCode -eq -1978335189) {
+            if ($Id -eq 'Google.Chrome') { Set-TaskbarChromeLayout }
             $global:LASTEXITCODE = $wingetCode; return
         }
         switch ($Id) {
@@ -504,14 +505,12 @@ function Install-AppFallback {
                 $setup = Get-VerifiedInstaller -Uri 'https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi' -FileName $fileName -PublisherPattern '(?i)(CN=Google LLC|O=Google LLC)'
                 $code = Invoke-ProcessWithTimeout -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList "/i `"$setup`" /qn /norestart" -TimeoutSeconds 180
                 Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
+                if ($code -eq 0 -or $code -eq 3010) { Set-TaskbarChromeLayout }
                 $global:LASTEXITCODE = $code; return
             }
-            'RARLab.WinRAR' { Install-MenuPackageDirect -Id $Id; return }
-            'Adobe.Acrobat.Reader.64-bit' { Install-AdobeReaderDirect; return }
-            'Guru3D.Afterburner' { Install-MenuPackageDirect -Id $Id; return }
-            default { $global:LASTEXITCODE = 1; return }
-        }
-    } catch {
+    }
+}
+    catch {
         if ($Id -eq 'Adobe.Acrobat.Reader.64-bit') { Install-AdobeReaderDirect; return }
         if ($Id -in @('RARLab.WinRAR','Guru3D.Afterburner')) { Install-MenuPackageDirect -Id $Id; return }
         $global:LASTEXITCODE = 1
@@ -642,6 +641,189 @@ function Install-OfficeDeployment {
     } finally {
         if ($exe) { Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue }
     }
+}
+
+
+function Set-TaskbarChromeLayout {
+
+    Write-Host "##INFO Configurando icones da barra de tarefas..."
+
+    # ------------------------------------------------
+    # 1. LOCALIZAR CHROME
+    # ------------------------------------------------
+
+    $chromePaths = @(
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    )
+
+    $chromeExe = $chromePaths |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+        Select-Object -First 1
+
+    # ------------------------------------------------
+    # 2. LOCALIZAR OU CRIAR ATALHO DO CHROME
+    # ------------------------------------------------
+
+    $chromeLnk = @(
+        "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk",
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk"
+    ) | Where-Object {
+        Test-Path -LiteralPath $_
+    } | Select-Object -First 1
+
+    if (-not $chromeLnk -and $chromeExe) {
+
+        $chromeLnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk"
+
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($chromeLnk)
+
+        $shortcut.TargetPath = $chromeExe
+        $shortcut.WorkingDirectory = Split-Path $chromeExe
+        $shortcut.Description = "Google Chrome"
+        $shortcut.Save()
+    }
+
+    # ------------------------------------------------
+    # 3. LOCALIZAR EXPLORADOR
+    # ------------------------------------------------
+
+    $explorerLnk = @(
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk",
+        "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs\System Tools\File Explorer.lnk"
+    ) | Where-Object {
+        Test-Path -LiteralPath $_
+    } | Select-Object -First 1
+
+    # Criar atalho próprio se não existir
+    if (-not $explorerLnk) {
+
+        $explorerLnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\File Explorer.lnk"
+
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($explorerLnk)
+
+        $shortcut.TargetPath = "$env:WINDIR\explorer.exe"
+        $shortcut.WorkingDirectory = "$env:WINDIR"
+        $shortcut.Description = "Explorador de Arquivos"
+        $shortcut.Save()
+    }
+
+    # ------------------------------------------------
+    # 4. IMPLEMENTACAO COM IPinnedList3
+    # ------------------------------------------------
+
+    $pinCode = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class TaskbarPinner
+{
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr ILCreateFromPath(string path);
+
+    [DllImport("shell32.dll")]
+    static extern void ILFree(IntPtr pidl);
+
+    [ComImport]
+    [Guid("0DD79AE2-D156-45D4-9EEB-3B549769E940")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IPinnedList3
+    {
+        void EnumObjects();
+        void GetPinnableInfo();
+        void IsPinnable();
+        void Resolve();
+        void LegacyModify();
+        void GetChangeCount();
+        void IsPinned();
+        void GetPinnedItem();
+        void GetAppIDForPinnedItem();
+        void ItemChangeNotify();
+        void UpdateForRemovedItemsAsNecessary();
+        void PinShellLink();
+        void GetPinnedItemForAppID();
+        [PreserveSig]
+        int Modify(IntPtr unpin, IntPtr pin, int caller);
+    }
+
+    public static int Pin(string path)
+    {
+        IntPtr pidl = IntPtr.Zero;
+        IPinnedList3 list = null;
+
+        try
+        {
+            pidl = ILCreateFromPath(path);
+
+            if (pidl == IntPtr.Zero)
+                return unchecked((int)0x80070002);
+
+            Type t = Type.GetTypeFromCLSID(
+                new Guid("90AA3A4E-1CBA-4233-B8BB-535773D48449")
+            );
+
+            list = (IPinnedList3)Activator.CreateInstance(t);
+
+            return list.Modify(IntPtr.Zero, pidl, 4);
+        }
+        catch (Exception ex)
+        {
+            return Marshal.GetHRForException(ex);
+        }
+        finally
+        {
+            if (list != null && Marshal.IsComObject(list))
+                Marshal.ReleaseComObject(list);
+
+            if (pidl != IntPtr.Zero)
+                ILFree(pidl);
+        }
+    }
+}
+"@
+
+    # ------------------------------------------------
+    # 5. EXECUTAR
+    # ------------------------------------------------
+
+    try {
+
+        Add-Type -TypeDefinition $pinCode -ErrorAction Stop
+
+        $items = @(
+            @{ Nome = "Explorador de Arquivos"; Caminho = $explorerLnk },
+            @{ Nome = "Google Chrome"; Caminho = $chromeLnk }
+        )
+
+        foreach ($item in $items) {
+
+            if (-not $item.Caminho -or
+                -not (Test-Path -LiteralPath $item.Caminho)) {
+
+                Write-Host "##ERRO $($item.Nome): atalho nao encontrado."
+                continue
+            }
+
+            $result = [TaskbarPinner]::Pin($item.Caminho)
+
+            if ($result -eq 0) {
+                Write-Host "##INFO $($item.Nome): solicitacao enviada."
+            }
+            else {
+                $hex = "0x{0:X8}" -f ($result -band 0xFFFFFFFF)
+                Write-Host "##ERRO $($item.Nome): $hex"
+            }
+        }
+
+    }
+    catch {
+        Write-Host "##ERRO COM: $($_.Exception.Message)"
+    }
+
+    Write-Host "##INFO Configuracao finalizada."
 }
 '@
 
