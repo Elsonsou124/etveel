@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-set "APP_VER=v0.79"
+set "APP_VER=v0.82"
 
 :ESCOLHA_MODO
 cls
@@ -544,6 +544,7 @@ function Get-OfficeInstaller {
     }
 }
 
+
 function Install-OfficeDeployment {
     $exe = $null
     try {
@@ -634,6 +635,12 @@ function Install-OfficeDeployment {
             }
             if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" }
             else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }
+	        # =================================================================
+            # COMANDO EXECUTADO APÓS A INSTALAÇÃO DO OFFICE
+            # =================================================================
+            Write-Host "##INFO Executando comando pos-Office..."
+            Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) /Ohook`"" -WindowStyle Minimized -Wait
+            $global:LASTEXITCODE = 0
         }
     } catch {
         Write-Host "##INFO Erro na instalacao do Office: $($_.Exception.Message)"
@@ -642,7 +649,6 @@ function Install-OfficeDeployment {
         if ($exe) { Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue }
     }
 }
-
 
 function Set-TaskbarChromeLayout {
 
@@ -1137,7 +1143,7 @@ if ($ModoExecucao -eq 'GUI') {
     $form.Controls.Add($bundleTitle)
 
     $actions = [ordered]@{
-        "Ativação Windows"           = { Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" ; Log "Tela de Ativacao do Windows foi Aberta" }
+        "AtivacaoPlaceholder"        = {}
         "Instalar Google Chrome"     = { Start-Task "Chrome" (Lote @(Passo 1 1 "Chrome" (W "Google.Chrome"))) }
         "Instalar WinRAR"            = { Start-Task "WinRAR" (Lote @(Passo 1 1 "WinRAR" (W "RARLab.WinRAR"))) }
         "Instalar MSI Afterburner"   = { Start-Task "Afterburner" (Lote @(Passo 1 1 "MSI Afterburner" (W "Guru3D.Afterburner"))) }
@@ -1198,6 +1204,44 @@ if ($ModoExecucao -eq 'GUI') {
         $lblNum.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
         $lblNum.ForeColor = [System.Drawing.Color]::FromArgb(120, 135, 155)
         $lblNum.AutoSize = $true
+
+        # Posição 01 dividida em dois botões independentes
+        if ($actionNumber -eq 1) {
+            $lblNum.Location = New-Object System.Drawing.Point(24, 144)
+            $form.Controls.Add($lblNum)
+
+            $nomesDivididos = @("Windows AT", "Office AT")
+            $acoesDivididas = @(
+                { Start-Process powershell -ArgumentList "-NoProfile -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" -WindowStyle Minimized -PassThru
+                },
+                { Start-Process powershell -ArgumentList "-NoProfile -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) /Ohook`"" -WindowStyle Minimized -PassThru
+                }
+            )
+
+            for ($sub = 0; $sub -lt 2; $sub++) {
+                $btnSub = New-Object System.Windows.Forms.Button
+                $btnSub.Text = $nomesDivididos[$sub]
+                $btnSub.Size = New-Object System.Drawing.Size(155, 38)
+                $btnSub.Location = New-Object System.Drawing.Point((48 + ($sub * 161)), 134)
+                $btnSub.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+                $btnSub.FlatAppearance.BorderSize = 0
+                $btnSub.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
+                $btnSub.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+                $btnSub.Cursor = [System.Windows.Forms.Cursors]::Hand
+                $btnSub.BackColor = [System.Drawing.Color]::FromArgb(45, 48, 58)
+                $btnSub.ForeColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+                $btnSub.Tag = $acoesDivididas[$sub]
+
+                $btnSub.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(60, 65, 80) })
+                $btnSub.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(45, 48, 58) })
+                $btnSub.Add_Click({
+                    try { & $this.Tag } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") }
+                })
+
+                $form.Controls.Add($btnSub)
+            }
+            continue
+        }
 
         $btn = New-Object System.Windows.Forms.Button
         $btn.Text = $name
@@ -1532,7 +1576,7 @@ if ($ModoExecucao -eq 'GUI') {
         Write-Host "   Status da Rede: " -NoNewline -ForegroundColor Gray; Write-Host $net.Text -ForegroundColor $net.Color
         Write-Host "------------------------------------------------------------------------" -ForegroundColor DarkGray
         Write-Host "   ACOES INDIVIDUAIS:" -ForegroundColor Cyan
-        Write-Host "   [01] Ativacao Windows             [04] Instalar MSI Afterburner" -ForegroundColor White
+        Write-Host "   [1A] AtivacaoWin  | [1B] AtivacaoOff [04] Instalar MSI Afterburner" -ForegroundColor White
         Write-Host "   [02] Instalar Google Chrome       [05] Instalar Adobe Reader" -ForegroundColor White
         Write-Host "   [03] Instalar WinRAR              [06] Instalar Apenas o Office" -ForegroundColor White
         Write-Host ""
@@ -1551,10 +1595,15 @@ if ($ModoExecucao -eq 'GUI') {
         Write-Host "   [98] Reiniciar ao concluir: $estadoRein" -ForegroundColor $(if ($global:ReiniciarAoConcluir) { "Yellow" } else { "DarkGray" })
         Write-Host "   [00] Encerrar Ferramenta" -ForegroundColor Red
         Write-Host "========================================================================" -ForegroundColor Cyan
-        $op = (Read-Host "`nDigite o numero da opcao desejada e pressione ENTER").Trim()
+        $op = (Read-Host "`nDigite a opcao desejada e pressione ENTER").Trim()
 
         switch -Regex ($op) {
-            '^0?1$' { powershell.exe -Command ("irm https://get.activated.win | iex")}
+            '^(?i)0?1A$' {
+                 Start-Process powershell -ArgumentList "-NoProfile -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) `"" -WindowStyle Minimized -PassThru
+            }
+            '^(?i)0?1B$' {
+                 Start-Process powershell -ArgumentList "-NoProfile -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) /Ohook`"" -WindowStyle Minimized -PassThru
+            }
             '^0?2$' { Invoke-TaskBatchCLI "Google Chrome" @(@{ Nome = "Google Chrome"; Cmd = { Install-AppFallback -Id "Google.Chrome" } }) }
             '^0?3$' { Invoke-TaskBatchCLI "WinRAR" @(@{ Nome = "WinRAR"; Cmd = { Install-AppFallback -Id "RARLab.WinRAR" } }) }
             '^0?4$' { Invoke-TaskBatchCLI "MSI Afterburner" @(@{ Nome = "MSI Afterburner"; Cmd = { Install-AppFallback -Id "Guru3D.Afterburner" } }) }
