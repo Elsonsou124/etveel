@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-set "APP_VER=v0.82"
+set "APP_VER=v0.85"
 
 :ESCOLHA_MODO
 cls
@@ -546,107 +546,278 @@ function Get-OfficeInstaller {
 
 
 function Install-OfficeDeployment {
+
     $exe = $null
+    $processo = $null
+
     try {
         Write-Host "##INFO Baixando e validando instalador do Office..."
         $exe = Get-OfficeInstaller
 
+        if (-not $exe -or -not (Test-Path -LiteralPath $exe)) {
+            throw "Instalador do Office não encontrado."
+        }
+
         Write-Host "##INFO Executando instalador do Office..."
         $processo = Start-Process -FilePath $exe -PassThru
+
         $officePids = New-Object 'System.Collections.Generic.HashSet[int]'
         [void]$officePids.Add([int]$processo.Id)
-        $officeUiaReady = $false
-        try { Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; $officeUiaReady = $true } catch {}
-        $officeConcluidoFechado = $false
 
+        $officeUiaReady = $false
+        $officeConcluidoFechado = $false
+        $regexProcInstalador = '(?i)^(OfficeC2RClient|OfficeSetup|setup)(\.exe)?$'
+        $inicio = Get-Date
+        $timeoutMinutos = 60
+
+        try {
+            Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
+            Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop
+            $officeUiaReady = $true
+        }
+        catch {
+            Write-Host "##INFO UI Automation indisponivel."
+        }
+
+        # ============================================================
+        # MONITORAMENTO DA INSTALACAO
+        # ============================================================
         while ($true) {
+
+            if (((Get-Date) - $inicio).TotalMinutes -gt $timeoutMinutos) {
+                Write-Host "##INFO Tempo limite atingido. Encerrando instalador."
+                Get-Process -Name "OfficeC2RClient", "OfficeSetup*" -ErrorAction SilentlyContinue |
+                    Stop-Process -Force -ErrorAction SilentlyContinue
+                break
+            }
+
             $listaProcessos = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+
+            # Processos filhos do instalador
             $novos = $true
             while ($novos) {
                 $novos = $false
                 foreach ($item in $listaProcessos) {
-                    if ($officePids.Contains([int]$item.ParentProcessId) -and -not $officePids.Contains([int]$item.ProcessId)) {
-                        [void]$officePids.Add([int]$item.ProcessId)
+                    $parentId = [int]$item.ParentProcessId
+                    $processId = [int]$item.ProcessId
+                    if ($officePids.Contains($parentId) -and -not $officePids.Contains($processId)) {
+                        [void]$officePids.Add($processId)
                         $novos = $true
                     }
                 }
             }
-            $processosVivos = @($listaProcessos | Where-Object { $officePids.Contains([int]$_.ProcessId) })
-            if ($processosVivos.Count -eq 0) { break }
 
+            # Processos do instalador (exceto o servico OfficeClickToRun)
+            foreach ($p in $listaProcessos) {
+                if ($p.Name -match '(?i)^(OfficeC2RClient|OfficeSetup|setup)\.exe$') {
+                    [void]$officePids.Add([int]$p.ProcessId)
+                }
+            }
+
+            $processosVivos = @(
+                $listaProcessos | Where-Object {
+                    $officePids.Contains([int]$_.ProcessId) -and
+                    $_.Name -notmatch '(?i)^OfficeClickToRun\.exe$'
+                }
+            )
+
+            $janelasOfficeAbertas = @(
+                Get-Process -Name "OfficeC2RClient", "OfficeSetup*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero }
+            )
+
+            if ($processosVivos.Count -eq 0 -and $janelasOfficeAbertas.Count -eq 0) {
+                break
+            }
+
+            # ========================================================
+            # DETECCAO DA TELA DE CONCLUSAO
+            # ========================================================
             if ($officeUiaReady -and -not $officeConcluidoFechado) {
                 try {
-                    $janelas = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+                    $janelas = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                        [System.Windows.Automation.TreeScope]::Children,
+                        [System.Windows.Automation.Condition]::TrueCondition
+                    )
+
                     foreach ($janela in $janelas) {
-                        if (-not $officePids.Contains([int]$janela.Current.ProcessId)) { continue }
-                        $elementos = @($janela) + @($janela.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+
+                        $pidJanela = [int]$janela.Current.ProcessId
+                        $tituloJanela = [string]$janela.Current.Name
+                        $nomeProc = (Get-Process -Id $pidJanela -ErrorAction SilentlyContinue).ProcessName
+
+                        if (
+                            -not $officePids.Contains($pidJanela) -and
+                            $nomeProc -notmatch $regexProcInstalador -and
+                            $tituloJanela -notmatch '(?i)(Office|Microsoft 365)'
+                        ) { continue }
+
+                        $elementos = @($janela)
+                        $descendentes = $janela.FindAll(
+                            [System.Windows.Automation.TreeScope]::Descendants,
+                            [System.Windows.Automation.Condition]::TrueCondition
+                        )
+                        foreach ($elemento in $descendentes) { $elementos += $elemento }
+
                         $nomes = New-Object System.Collections.Generic.List[string]
                         $botoesFechar = New-Object System.Collections.ArrayList
+
                         foreach ($elemento in $elementos) {
                             try {
                                 $nome = [string]$elemento.Current.Name
                                 if ($nome) { [void]$nomes.Add($nome) }
-                                if ($elemento.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $nome -match '^(?i:Fechar|Close|Concluir|Finish|Finalizar|Done)$' -and $elemento.Current.IsEnabled) {
+
+                                if (
+                                    $elemento.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+                                    $nome -match '^(?i:Fechar|Close|Concluir|Finish|Finalizar|Done)$' -and
+                                    $elemento.Current.IsEnabled
+                                ) {
                                     [void]$botoesFechar.Add($elemento)
                                 }
+                            }
+                            catch {}
+                        }
+
+                        $textoJanela = [string]::Join(' ', $nomes.ToArray())
+
+                        $instalacaoConcluida = $textoJanela -match (
+                            '(?i)(tudo pronto|all set|pronto para usar|' +
+                            'instalad[oa] agora|foram instalados|installed|' +
+                            'conclu[ií]d[oa]|finalizada|complete)'
+                        )
+
+                        if (-not $instalacaoConcluida) { continue }
+
+                        Write-Host "##INFO Tela de conclusao detectada."
+
+                        # 1) InvokePattern / 2) LegacyIAccessible no botao
+                        foreach ($botao in $botoesFechar) {
+                            try {
+                                $botao.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                                $officeConcluidoFechado = $true
+                                break
+                            } catch {}
+                            try {
+                                $botao.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction()
+                                $officeConcluidoFechado = $true
+                                break
                             } catch {}
                         }
-                        $textoJanela = [string]::Join(' ', $nomes.ToArray())
-                        $instalacaoConcluida = $textoJanela -match '(?i)(office|microsoft 365).{0,100}(installed|instalad[oa]|conclu[ií]d[oa])|(installation|instala[cç][aã]o).{0,60}(complete|completed|conclu[ií]d[oa]|finalizada)|(you.?re all set|all set|tudo pronto|pronto para usar)'
-                        if ($instalacaoConcluida -and $botoesFechar.Count -gt 0) {
-                            foreach ($botao in $botoesFechar) {
-                                try {
-                                    $padrao = $botao.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-                                    $padrao.Invoke()
-                                    $officeConcluidoFechado = $true
-                                    break
-                                } catch {}
-                            }
+
+                        # 3) Fecha a janela
+                        if (-not $officeConcluidoFechado) {
+                            try {
+                                $janela.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+                                $officeConcluidoFechado = $true
+                            } catch {}
                         }
-                        if ($officeConcluidoFechado) { break }
+
+                        # 4) Forca o encerramento
+                        if (-not $officeConcluidoFechado) {
+                            Stop-Process -Id $pidJanela -Force -ErrorAction SilentlyContinue
+                            $officeConcluidoFechado = $true
+                        }
+
+                        Start-Sleep -Seconds 3
+                        Get-Process -Name "OfficeC2RClient", "OfficeSetup*" -ErrorAction SilentlyContinue |
+                            Stop-Process -Force -ErrorAction SilentlyContinue
+
+                        Write-Host "##INFO Janela de conclusao fechada."
+                        break
                     }
-                } catch {}
+                }
+                catch {
+                    Write-Verbose "Erro na verificacao da interface: $($_.Exception.Message)"
+                }
             }
+
+            if ($officeConcluidoFechado) { break }
+
             Start-Sleep -Seconds 2
         }
 
+        # ============================================================
+        # VERIFICACAO DO RESULTADO
+        # ============================================================
         $processo.Refresh()
-        $exitCode = [int]$processo.ExitCode
+
+        if ($officeConcluidoFechado) {
+            $exitCode = 0
+        }
+        elseif ($processo.HasExited) {
+            $exitCode = [int]$processo.ExitCode
+        }
+        else {
+            $exitCode = 0
+        }
+
         if ($exitCode -eq 3010) { $exitCode = 0 }
+
         $global:LASTEXITCODE = $exitCode
 
+        # ============================================================
+        # ORGANIZACAO DOS ATALHOS
+        # ============================================================
         if ($global:LASTEXITCODE -eq 0) {
+
+            Write-Host "##INFO Instalacao do Office finalizada."
+
             $achou = $false
             $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Office 365"
-            $pastas = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs")
-            foreach ($app in @("*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk", "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk")) {
+
+            $pastas = @(
+                "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+                "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+            )
+
+            $aplicativos = @(
+                "*Word*.lnk", "*Excel*.lnk", "*PowerPoint*.lnk",
+                "*Access*.lnk", "*Publisher*.lnk", "*OneNote*.lnk"
+            )
+
+            foreach ($app in $aplicativos) {
                 foreach ($dir in $pastas) {
-                    if (Test-Path $dir) {
-                        $arquivos = Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "Wordpad|Voice" }
-                        foreach ($arq in $arquivos) {
-                            if (-not $achou) {
-                                if (-not (Test-Path $desk)) { New-Item -ItemType Directory -Force -Path $desk | Out-Null }
-                                $achou = $true
+                    if (-not (Test-Path -LiteralPath $dir)) { continue }
+
+                    $arquivos = @(
+                        Get-ChildItem -Path $dir -Filter $app -Recurse -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -notmatch "Wordpad|Voice" }
+                    )
+
+                    foreach ($arq in $arquivos) {
+                        if (-not $achou) {
+                            if (-not (Test-Path -LiteralPath $desk)) {
+                                New-Item -ItemType Directory -Force -Path $desk | Out-Null
                             }
-                            Copy-Item -Path $arq.FullName -Destination $desk -Force
+                            $achou = $true
                         }
+                        Copy-Item -Path $arq.FullName -Destination $desk -Force -ErrorAction SilentlyContinue
                     }
                 }
             }
-            if ($achou) { Write-Host "##INFO Atalhos do Office copiados com sucesso!" }
-            else { Write-Host "##INFO Nenhum atalho achado. O Office ja terminou de instalar?" }
-	        # =================================================================
-            # COMANDO EXECUTADO APÓS A INSTALAÇÃO DO OFFICE
-            # =================================================================
-            Write-Host "##INFO Executando comando pos-Office..."
-            Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) /Ohook`"" -WindowStyle Minimized -Wait
+
+            Write-Host "##INFO Atalhos do Office organizados."
             $global:LASTEXITCODE = 0
         }
-    } catch {
+        else {
+            Write-Host "##INFO Instalador retornou codigo: $exitCode"
+            $global:LASTEXITCODE = $exitCode
+        }
+    }
+    catch {
         Write-Host "##INFO Erro na instalacao do Office: $($_.Exception.Message)"
         $global:LASTEXITCODE = 1
-    } finally {
-        if ($exe) { Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue }
+    }
+    finally {
+        if ($exe -and (Test-Path -LiteralPath $exe)) {
+            Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+        }
+			# =================================================================
+            # COMANDO EXECUTADO APÓS A INSTALAÇÃO DO OFFICE
+            # =================================================================
+            Write-Host "##INFO Ativando Office 365"
+            Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"& ([ScriptBlock]::Create((irm https://get.activated.win))) /Ohook`"" -WindowStyle Minimized -Wait
+            $global:LASTEXITCODE = 0
     }
 }
 
