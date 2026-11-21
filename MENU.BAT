@@ -558,6 +558,14 @@ function Install-OfficeDeployment {
             throw "Instalador do Office não encontrado."
         }
 
+        $regPath = "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration"
+        $wordJaExistia = (Test-Path "$env:ProgramFiles\Microsoft Office\root\Office16\WINWORD.EXE") -or (Test-Path "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\WINWORD.EXE")
+        $dataModificacaoAnterior = $null
+        if ($wordJaExistia) {
+            $arqWord = Get-Item "$env:ProgramFiles\Microsoft Office\root\Office16\WINWORD.EXE", "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\WINWORD.EXE" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($arqWord) { $dataModificacaoAnterior = $arqWord.LastWriteTime }
+        }
+
         Write-Host "##INFO Executando instalador do Office..."
         $processo = Start-Process -FilePath $exe -PassThru
 
@@ -566,6 +574,7 @@ function Install-OfficeDeployment {
 
         $officeUiaReady = $false
         $officeConcluidoFechado = $false
+        $instalacaoIniciada = $false
         $regexProcInstalador = '(?i)^(OfficeC2RClient|OfficeSetup|setup)(\.exe)?$'
         $inicio = Get-Date
         $timeoutMinutos = 60
@@ -584,7 +593,9 @@ function Install-OfficeDeployment {
         # ============================================================
         while ($true) {
 
-            if (((Get-Date) - $inicio).TotalMinutes -gt $timeoutMinutos) {
+            $tempoDecorridoSegundos = ((Get-Date) - $inicio).TotalSeconds
+
+            if (($tempoDecorridoSegundos / 60) -gt $timeoutMinutos) {
                 Write-Host "##INFO Tempo limite atingido. Encerrando instalador."
                 Get-Process -Name "OfficeC2RClient", "OfficeSetup*" -ErrorAction SilentlyContinue |
                     Stop-Process -Force -ErrorAction SilentlyContinue
@@ -626,7 +637,26 @@ function Install-OfficeDeployment {
                 Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero }
             )
 
-            if ($processosVivos.Count -eq 0 -and $janelasOfficeAbertas.Count -eq 0) {
+            $cenarioAtivo = (Get-ItemProperty -Path $regPath -Name "ExecutingScenario" -ErrorAction SilentlyContinue).ExecutingScenario
+
+            # Marca que a instalacao realmente comecou quando detectar cenario no registro, UI aberta ou processo ativo
+            if ($cenarioAtivo -or $janelasOfficeAbertas.Count -gt 0 -or $processosVivos.Count -gt 0) {
+                $instalacaoIniciada = $true
+            }
+
+            # NUNCA permite sair nos primeiros 45 segundos se o cenario ainda nao comecou (evita o gap entre OfficeSetup e OfficeC2RClient)
+            if (-not $instalacaoIniciada -and $tempoDecorridoSegundos -lt 45) {
+                Start-Sleep -Seconds 2
+                continue
+            }
+
+            # Se ja passou de 45s e nem sequer iniciou (ex: usuario cancelou no UAC ou erro imediato)
+            if (-not $instalacaoIniciada -and $tempoDecorridoSegundos -ge 45 -and $processosVivos.Count -eq 0 -and -not $cenarioAtivo) {
+                break
+            }
+
+            # Se a instalacao iniciou, so sai se todos os processos de UI fecharam E nao ha cenario ativo no registro
+            if ($instalacaoIniciada -and $processosVivos.Count -eq 0 -and $janelasOfficeAbertas.Count -eq 0 -and -not $cenarioAtivo) {
                 break
             }
 
@@ -668,7 +698,6 @@ function Install-OfficeDeployment {
                                 if ($nome) { [void]$nomes.Add($nome) }
 
                                 if (
-                                    $elemento.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
                                     $nome -match '^(?i:Fechar|Close|Concluir|Finish|Finalizar|Done)$' -and
                                     $elemento.Current.IsEnabled
                                 ) {
@@ -685,6 +714,14 @@ function Install-OfficeDeployment {
                             'instalad[oa] agora|foram instalados|installed|' +
                             'conclu[ií]d[oa]|finalizada|complete)'
                         )
+
+                        # Fallback: so considera concluido pelo disco se o cenario acabou E o WINWORD.EXE foi criado/atualizado agora
+                        if (-not $instalacaoConcluida -and -not $cenarioAtivo -and $tempoDecorridoSegundos -gt 45) {
+                            $arqWordAtual = Get-Item "$env:ProgramFiles\Microsoft Office\root\Office16\WINWORD.EXE", "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\WINWORD.EXE" -ErrorAction SilentlyContinue | Select-Object -First 1
+                            if ($arqWordAtual -and ($arqWordAtual.LastWriteTime -ne $dataModificacaoAnterior)) {
+                                $instalacaoConcluida = $true
+                            }
+                        }
 
                         if (-not $instalacaoConcluida) { continue }
 
@@ -812,7 +849,7 @@ function Install-OfficeDeployment {
         if ($exe -and (Test-Path -LiteralPath $exe)) {
             Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
         }
-			# =================================================================
+		    # =================================================================
             # COMANDO EXECUTADO APÓS A INSTALAÇÃO DO OFFICE
             # =================================================================
             Write-Host "##INFO Ativando Office 365"
