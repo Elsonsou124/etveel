@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 set "BATDRIVE=%~d0"
 set "INSTALLER_FILE=%~f0"
-set "APP_VER=v0.85"
+set "APP_VER=v0.86"
 
 :ESCOLHA_MODO
 cls
@@ -1146,7 +1146,7 @@ if ($ModoExecucao -eq 'GUI') {
     $splashPanel.Controls.Add($lblSplashSub)
 
     $lblSplashVer = New-Object System.Windows.Forms.Label
-    $lblSplashVer.Text = "Versão $VersaoAtual — Inicializando Ambiente..."
+    $lblSplashVer.Text = "Versão $VersaoAtual - Inicializando Ambiente..."
     $lblSplashVer.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
     $lblSplashVer.ForeColor = [System.Drawing.Color]::FromArgb(110, 125, 145)
     $lblSplashVer.AutoSize = $true
@@ -1230,7 +1230,7 @@ if ($ModoExecucao -eq 'GUI') {
     $customTitleBar.Controls.Add($btnClose)
 
     $btnMinimize = New-Object System.Windows.Forms.Button
-    $btnMinimize.Text = "—"
+    $btnMinimize.Text = "-"
     $btnMinimize.Size = New-Object System.Drawing.Size(45, 35)
     $btnMinimize.Location = New-Object System.Drawing.Point(1030, 0)
     $btnMinimize.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -1697,6 +1697,13 @@ if ($ModoExecucao -eq 'GUI') {
                         if ($resp -eq [System.Windows.Forms.DialogResult]::Cancel) { shutdown.exe /a | Out-Null; Log "Reinicio cancelado pelo usuario." }
                         else { shutdown.exe /a | Out-Null; shutdown.exe /r /t 0 | Out-Null; $form.Close() }
                     }
+                    if ($chkDesligar.Checked) {
+                        Log "Desligar ao concluir marcado: o computador vai desligar em 60 segundos..."
+                        shutdown.exe /s /t 60 /c "Assistente de Formatacao: tarefas concluidas. Desligando em 60 segundos." | Out-Null
+                        $resp = [System.Windows.Forms.MessageBox]::Show("Todas as tarefas terminaram.`n`nO computador vai desligar em 60 segundos.`n`nOK = Desligar agora`nCancelar = NAO desligar", "Desligar o computador", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                        if ($resp -eq [System.Windows.Forms.DialogResult]::Cancel) { shutdown.exe /a | Out-Null; Log "Desligamento cancelado pelo usuario." }
+                        else { shutdown.exe /a | Out-Null; shutdown.exe /s /t 0 | Out-Null; $form.Close() }
+                    }
                     if ($chkSair.Checked) { Log "Sair ao concluir marcado: fechando a ferramenta..."; $form.Close() }
                 }
             }
@@ -1706,18 +1713,19 @@ if ($ModoExecucao -eq 'GUI') {
 
     # Rodapé
     $sair = New-Object System.Windows.Forms.Button; $sair.Text = "Encerrar Ferramenta"; $sair.Size = New-Object System.Drawing.Size(170, 38); $sair.Location = New-Object System.Drawing.Point(24, 634); $sair.FlatStyle = "Flat"; $sair.FlatAppearance.BorderSize = 0; $sair.BackColor = [System.Drawing.Color]::FromArgb(180, 50, 60); $sair.ForeColor = [System.Drawing.Color]::White; $sair.Cursor = "Hand"; $sair.Add_Click({ $form.Close() }); $form.Controls.Add($sair)
-    $chkSair = New-Object System.Windows.Forms.CheckBox; $chkSair.Text = "Sair ao concluir"; $chkSair.AutoSize = $true; $chkSair.Location = New-Object System.Drawing.Point(210, 655); $chkSair.ForeColor = [System.Drawing.Color]::FromArgb(200, 205, 215); $chkSair.Cursor = "Hand"; $form.Controls.Add($chkSair)
-    $chkReiniciar = New-Object System.Windows.Forms.CheckBox; $chkReiniciar.Text = "Reiniciar ao concluir"; $chkReiniciar.AutoSize = $true; $chkReiniciar.Location = New-Object System.Drawing.Point(210, 633); $chkReiniciar.ForeColor = [System.Drawing.Color]::FromArgb(255, 190, 90); $chkReiniciar.Cursor = "Hand"; $form.Controls.Add($chkReiniciar)
-    $watermark = New-Object System.Windows.Forms.Label; $watermark.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"; $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 8.5); $watermark.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120); $watermark.AutoSize = $true; $watermark.Location = New-Object System.Drawing.Point(435, 645); $form.Controls.Add($watermark)
+    $chkSair = New-Object System.Windows.Forms.CheckBox; $chkSair.Text = "Sair ao concluir"; $chkSair.AutoSize = $true; $chkSair.Location = New-Object System.Drawing.Point(210, 655); $chkSair.ForeColor = [System.Drawing.Color]::FromArgb(200, 205, 215); $chkSair.Cursor = "Hand"; $chkSair.Add_CheckedChanged({ if ($chkSair.Checked) { $chkReiniciar.Checked = $false; $chkDesligar.Checked = $false } }); $form.Controls.Add($chkSair)
+    $chkReiniciar = New-Object System.Windows.Forms.CheckBox; $chkReiniciar.Text = "Reiniciar ao concluir"; $chkReiniciar.AutoSize = $true; $chkReiniciar.Location = New-Object System.Drawing.Point(210, 633); $chkReiniciar.ForeColor = [System.Drawing.Color]::FromArgb(255, 190, 90); $chkReiniciar.Cursor = "Hand"; $chkReiniciar.Add_CheckedChanged({ if ($chkReiniciar.Checked) { $chkSair.Checked = $false; $chkDesligar.Checked = $false } }); $form.Controls.Add($chkReiniciar)
+    $chkDesligar = New-Object System.Windows.Forms.CheckBox; $chkDesligar.Text = "Desligar ao concluir"; $chkDesligar.AutoSize = $true; $chkDesligar.Location = New-Object System.Drawing.Point(370, 633); $chkDesligar.ForeColor = [System.Drawing.Color]::FromArgb(255, 110, 110); $chkDesligar.Cursor = "Hand"; $chkDesligar.Add_CheckedChanged({ if ($chkDesligar.Checked) { $chkSair.Checked = $false; $chkReiniciar.Checked = $false } }); $form.Controls.Add($chkDesligar)
+    $watermark = New-Object System.Windows.Forms.Label; $watermark.Text = "Desenvolvido por: Elson (Criatividade E Tudo)"; $watermark.Font = New-Object System.Drawing.Font("Segoe UI", 8.5); $watermark.ForeColor = [System.Drawing.Color]::FromArgb(100, 110, 120); $watermark.AutoSize = $true; $watermark.Location = New-Object System.Drawing.Point(535, 645); $form.Controls.Add($watermark)
     $versaoLabel = New-Object System.Windows.Forms.Label; $versaoLabel.Text = $VersaoAtual; $versaoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold); $versaoLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 180, 255); $versaoLabel.AutoSize = $true; $versaoLabel.Location = New-Object System.Drawing.Point(1055, 645); $form.Controls.Add($versaoLabel)
 
     $form.Show(); Update-CustomScroll
     [System.Windows.Forms.Application]::Run($form)
     $netTimer.Stop(); $netTimer.Dispose(); $animTimer.Stop(); $animTimer.Dispose(); $timer.Stop(); $timer.Dispose(); $form.Dispose()
-
+	
 } else {
     # -----------------------------------------------------------------
-    # MODO 2: TERMINAL LITE (CLI NUMÉRICO — ZERO WINDOWS FORMS)
+    # MODO 2: TERMINAL LITE (CLI NUMÉRICO - ZERO WINDOWS FORMS)
     # -----------------------------------------------------------------
     Invoke-Expression $appInstallHelpers
 
