@@ -1703,20 +1703,20 @@ if ($ModoExecucao -eq 'GUI') {
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
-    $cBgMain      = [System.Drawing.Color]::FromArgb(18, 10, 30)
-    $cBgPanel     = [System.Drawing.Color]::FromArgb(30, 17, 50)
-    $cBgHeader    = [System.Drawing.Color]::FromArgb(13, 7, 22)
-    $cNeonPink    = [System.Drawing.Color]::FromArgb(255, 42, 133)
-    $cNeonCyan    = [System.Drawing.Color]::FromArgb(0, 240, 255)
-    $cSunsetOrg   = [System.Drawing.Color]::FromArgb(255, 165, 55)
-    $cTabActiveBg = [System.Drawing.Color]::FromArgb(0, 210, 235)
-    $cTabActiveFg = [System.Drawing.Color]::FromArgb(10, 12, 20)
-    $cTabIdleBg   = [System.Drawing.Color]::FromArgb(34, 20, 56)
-    $cTabIdleFg   = [System.Drawing.Color]::FromArgb(255, 232, 95)
-    $cTextLight   = [System.Drawing.Color]::FromArgb(255, 255, 255)
-    $cTextMuted   = [System.Drawing.Color]::FromArgb(155, 248, 255)
-    $cGtaOptText  = [System.Drawing.Color]::FromArgb(255, 232, 95)
-    $cGtaOptSub   = [System.Drawing.Color]::FromArgb(165, 248, 255)
+    $cBgMain      = [System.Drawing.Color]::FromArgb(11, 8, 16)
+    $cBgPanel     = [System.Drawing.Color]::FromArgb(22, 16, 30)
+    $cBgHeader    = [System.Drawing.Color]::FromArgb(7, 5, 11)
+    $cNeonPink    = [System.Drawing.Color]::FromArgb(255, 61, 139)
+    $cNeonCyan    = [System.Drawing.Color]::FromArgb(45, 212, 191)
+    $cSunsetOrg   = [System.Drawing.Color]::FromArgb(255, 138, 61)
+    $cTabActiveBg = [System.Drawing.Color]::FromArgb(255, 61, 139)
+    $cTabActiveFg = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    $cTabIdleBg   = [System.Drawing.Color]::FromArgb(22, 16, 30)
+    $cTabIdleFg   = [System.Drawing.Color]::FromArgb(245, 238, 250)
+    $cTextLight   = [System.Drawing.Color]::FromArgb(245, 238, 250)
+    $cTextMuted   = [System.Drawing.Color]::FromArgb(167, 155, 184)
+    $cGtaOptText  = [System.Drawing.Color]::FromArgb(245, 238, 250)
+    $cGtaOptSub   = [System.Drawing.Color]::FromArgb(205, 196, 220)
 
     function New-GtaMiniImage {
         param([string]$Tipo, [int]$W = 32, [int]$H = 32)
@@ -1730,13 +1730,13 @@ if ($ModoExecucao -eq 'GUI') {
                 $rectSun = New-Object System.Drawing.Rectangle(3, 2, ($W - 6), ($H - 4))
                 $brushSun = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
                     $rectSun,
-                    [System.Drawing.Color]::FromArgb(255, 200, 50),
-                    [System.Drawing.Color]::FromArgb(255, 42, 133),
+                    [System.Drawing.Color]::FromArgb(255, 184, 77),
+                    [System.Drawing.Color]::FromArgb(255, 61, 139),
                     90.0
                 )
                 $g.FillEllipse($brushSun, $rectSun)
                 $fnt = New-Object System.Drawing.Font("Segoe UI", [Math]::Max(10, [int]($H * 0.36)), [System.Drawing.FontStyle]::Bold)
-                $brDark = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(15, 8, 25))
+                $brDark = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(11, 8, 16))
                 $brWhite = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
                 $g.DrawString("VI", $fnt, $brDark, 8, 6)
                 $g.DrawString("VI", $fnt, $brWhite, 7, 5)
@@ -1753,45 +1753,45 @@ if ($ModoExecucao -eq 'GUI') {
                 $g.DrawString("VI", $fnt, [System.Drawing.Brushes]::White, $rectFull, $sf)
             }
             "TabEssenciais" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 42, 133), 2.2)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 61, 139), 2.2)
                 $g.DrawRectangle($p, 5, 5, 9, 9)
                 $g.DrawRectangle($p, 18, 5, 9, 9)
                 $g.DrawRectangle($p, 5, 18, 9, 9)
-                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 165, 55))), 18, 18, 9, 9)
+                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 138, 61))), 18, 18, 9, 9)
             }
             "TabGamer" {
-                $br = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 42, 133))
+                $br = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 61, 139))
                 $g.FillEllipse($br, 3, 8, 12, 16)
                 $g.FillEllipse($br, 17, 8, 12, 16)
                 $g.FillRectangle($br, 9, 10, 14, 11)
             }
             "TabLojas" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 165, 55), 2.2)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 138, 61), 2.2)
                 $g.DrawRectangle($p, 6, 11, 20, 16)
                 $g.DrawArc($p, 11, 5, 10, 10, 180, 180)
             }
             "TabSistema" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 42, 133), 2.2)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 61, 139), 2.2)
                 $g.DrawEllipse($p, 7, 7, 18, 18)
-                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 165, 55))), 13, 13, 6, 6)
+                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 138, 61))), 13, 13, 6, 6)
             }
             "CardChrome" {
-                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 70, 95))), 4, 4, 24, 24)
-                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 240, 255))), 10, 10, 12, 12)
+                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 61, 139))), 4, 4, 24, 24)
+                $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 191))), 10, 10, 12, 12)
             }
             "CardWinRAR" {
-                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(165, 90, 235))), 6, 5, 20, 7)
-                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 240, 255))), 6, 13, 20, 7)
-                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 42, 133))), 6, 21, 20, 7)
+                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 138, 61))), 6, 5, 20, 7)
+                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 191))), 6, 13, 20, 7)
+                $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 61, 139))), 6, 21, 20, 7)
             }
             "CardOffice" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 165, 55), 2.5)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 138, 61), 2.5)
                 $g.DrawRectangle($p, 7, 5, 18, 22)
                 $g.DrawLine($p, 11, 12, 21, 12)
                 $g.DrawLine($p, 11, 18, 21, 18)
             }
             "CardAdobe" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 42, 133), 2.5)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 61, 139), 2.5)
                 $g.DrawPolygon($p, [System.Drawing.Point[]]@(
                     (New-Object System.Drawing.Point(16, 4)),
                     (New-Object System.Drawing.Point(28, 26)),
@@ -1799,18 +1799,18 @@ if ($ModoExecucao -eq 'GUI') {
                 ))
             }
             "CardAfterburner" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(0, 240, 255), 2.5)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, 212, 191), 2.5)
                 $g.DrawArc($p, 4, 6, 24, 24, 180, 180)
-                $g.DrawLine((New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 42, 133), 2.5)), 16, 20, 24, 10)
+                $g.DrawLine((New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 61, 139), 2.5)), 16, 20, 24, 10)
             }
             "CardKey" {
-                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 200, 50), 2.5)
+                $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 184, 77), 2.5)
                 $g.DrawEllipse($p, 5, 10, 11, 11)
                 $g.DrawLine($p, 16, 15, 27, 15)
                 $g.DrawLine($p, 24, 15, 24, 21)
             }
             "CardBundle" {
-                $g.FillPolygon((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 240, 255))), [System.Drawing.Point[]]@(
+                $g.FillPolygon((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(45, 212, 191))), [System.Drawing.Point[]]@(
                     (New-Object System.Drawing.Point(18, 4)),
                     (New-Object System.Drawing.Point(8, 17)),
                     (New-Object System.Drawing.Point(15, 17)),
@@ -1874,7 +1874,7 @@ if ($ModoExecucao -eq 'GUI') {
     $splashGtaBarFill = New-Object System.Windows.Forms.Panel
     $splashGtaBarFill.Location = New-Object System.Drawing.Point(0, 0)
     $splashGtaBarFill.Size = New-Object System.Drawing.Size(0, 6)
-    $splashGtaBarFill.BackColor = [System.Drawing.Color]::White
+    $splashGtaBarFill.BackColor = [System.Drawing.Color]::FromArgb(255, 61, 139)
     $splashGtaBarBg.Controls.Add($splashGtaBarFill)
 
     $splashGtaTimer = New-Object System.Windows.Forms.Timer
@@ -1973,7 +1973,7 @@ if ($ModoExecucao -eq 'GUI') {
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $form.BackColor = $cBgMain
     $form.ForeColor = $cTextLight
-    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 
     $global:mouseOffset = $null
     $customTitleBar = New-Object System.Windows.Forms.Panel
@@ -1994,7 +1994,7 @@ if ($ModoExecucao -eq 'GUI') {
     $lblWindowTitle = New-Object System.Windows.Forms.Label
     $lblWindowTitle.Text = "  Assistente de Formatação Pro • GTA VI ($VersaoAtual)"
     $lblWindowTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblWindowTitle.ForeColor = $cNeonCyan
+    $lblWindowTitle.ForeColor = $cTextMuted
     $lblWindowTitle.AutoSize = $true
     $lblWindowTitle.Location = New-Object System.Drawing.Point(8, 8)
     $customTitleBar.Controls.Add($lblWindowTitle)
@@ -2026,7 +2026,7 @@ if ($ModoExecucao -eq 'GUI') {
     $header = New-Object System.Windows.Forms.Panel
     $header.Location = New-Object System.Drawing.Point(0, 34)
     $header.Size = New-Object System.Drawing.Size(1140, 72)
-    $header.BackColor = [System.Drawing.Color]::FromArgb(24, 12, 42)
+    $header.BackColor = [System.Drawing.Color]::FromArgb(15, 10, 22)
     $form.Controls.Add($header)
 
     $picHeaderVI = New-Object System.Windows.Forms.PictureBox
@@ -2034,6 +2034,17 @@ if ($ModoExecucao -eq 'GUI') {
     $picHeaderVI.Location = New-Object System.Drawing.Point(24, 12)
     $picHeaderVI.Image = New-GtaMiniImage -Tipo "LogoVI" -W 48 -H 48
     $header.Controls.Add($picHeaderVI)
+
+    $sunsetStrip = New-Object System.Windows.Forms.Panel
+    $sunsetStrip.Location = New-Object System.Drawing.Point(0, 105)
+    $sunsetStrip.Size = New-Object System.Drawing.Size(1140, 3)
+    $sunsetStrip.Add_Paint({
+        $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($this.ClientRectangle, [System.Drawing.Color]::FromArgb(255, 61, 139), [System.Drawing.Color]::FromArgb(255, 138, 61), 0.0)
+        $_.Graphics.FillRectangle($br, $this.ClientRectangle)
+        $br.Dispose()
+    })
+    $form.Controls.Add($sunsetStrip)
+    $sunsetStrip.BringToFront()
 
     $title = New-Object System.Windows.Forms.Label
     $title.Text = "ASSISTENTE DE FORMATAÇÃO • GTA 6"
@@ -2046,7 +2057,7 @@ if ($ModoExecucao -eq 'GUI') {
     $subTitle = New-Object System.Windows.Forms.Label
     $subTitle.Text = "Modo GTA 6 • Elson (Criatividade E Tudo)"
     $subTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $subTitle.ForeColor = $cNeonCyan
+    $subTitle.ForeColor = $cSunsetOrg
     $subTitle.AutoSize = $true
     $subTitle.Location = New-Object System.Drawing.Point(86, 40)
     $header.Controls.Add($subTitle)
@@ -2121,7 +2132,7 @@ if ($ModoExecucao -eq 'GUI') {
                 $btnT.ForeColor = $cTabActiveFg
             } else {
                 $btnT.BackColor = $cTabIdleBg
-                $btnT.ForeColor = $cGtaOptText
+                $btnT.ForeColor = $cTextMuted
             }
         }
     }
@@ -2138,7 +2149,7 @@ if ($ModoExecucao -eq 'GUI') {
         $bTab.Text = "  " + $tm.Titulo
         $bTab.Size = New-Object System.Drawing.Size(264, 40)
         $bTab.Location = New-Object System.Drawing.Point($tm.X, 2)
-        $bTab.FlatStyle = "Flat"; $bTab.FlatAppearance.BorderSize = 1; $bTab.FlatAppearance.BorderColor = $cNeonCyan
+        $bTab.FlatStyle = "Flat"; $bTab.FlatAppearance.BorderSize = 0
         $bTab.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
         $bTab.Image = New-GtaMiniImage -Tipo $tm.Icone -W 22 -H 22
         $bTab.ImageAlign = [System.Drawing.ContentAlignment]::MiddleLeft
@@ -2152,7 +2163,7 @@ if ($ModoExecucao -eq 'GUI') {
         $pnlPage = New-Object System.Windows.Forms.Panel
         $pnlPage.Location = New-Object System.Drawing.Point(24, 166)
         $pnlPage.Size = New-Object System.Drawing.Size(1092, 224)
-        $pnlPage.BackColor = [System.Drawing.Color]::FromArgb(24, 13, 42)
+        $pnlPage.BackColor = [System.Drawing.Color]::FromArgb(15, 10, 22)
         $pnlPage.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         $pnlPage.Visible = $false
         $form.Controls.Add($pnlPage)
@@ -2185,26 +2196,31 @@ if ($ModoExecucao -eq 'GUI') {
 
         $lblT = New-Object System.Windows.Forms.Label
         $lblT.Text = $Titulo
-        $lblT.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+        $lblT.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
         $lblT.ForeColor = $cGtaOptText
         $lblT.Location = New-Object System.Drawing.Point($textX, 12)
         $lblT.Size = New-Object System.Drawing.Size($textW, 22)
-        $lblT.Enabled = $false
+        $lblT.Cursor = "Hand"
         $card.Controls.Add($lblT)
 
         $lblS = New-Object System.Windows.Forms.Label
         $lblS.Text = $Sub
-        $lblS.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+        $lblS.Font = New-Object System.Drawing.Font("Segoe UI", 9)
         $lblS.ForeColor = $cGtaOptSub
         $lblS.Location = New-Object System.Drawing.Point($textX, 36)
         $lblS.Size = New-Object System.Drawing.Size($textW, [Math]::Max(24, $H - 42))
-        $lblS.Enabled = $false
+        $lblS.Cursor = "Hand"
         $card.Controls.Add($lblS)
 
         $card.Tag = $Acao
-        $card.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(48, 26, 78) })
-        $card.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(30, 17, 50) })
+        $card.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(38, 27, 52) })
+        $card.Add_MouseLeave({ if (-not $this.ClientRectangle.Contains($this.PointToClient([System.Windows.Forms.Cursor]::Position))) { $this.BackColor = [System.Drawing.Color]::FromArgb(22, 16, 30) } })
         $card.Add_Click({ try { & $this.Tag } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
+        foreach ($lbl in @($lblT, $lblS)) {
+            $lbl.Add_MouseEnter({ $this.Parent.BackColor = [System.Drawing.Color]::FromArgb(38, 27, 52) })
+            $lbl.Add_MouseLeave({ $pc = $this.Parent; if (-not $pc.ClientRectangle.Contains($pc.PointToClient([System.Windows.Forms.Cursor]::Position))) { $pc.BackColor = [System.Drawing.Color]::FromArgb(22, 16, 30) } })
+            $lbl.Add_Click({ try { & $this.Parent.Tag } catch { [System.Windows.Forms.MessageBox]::Show("Erro: $_") } })
+        }
         $Parent.Controls.Add($card)
     }
 
