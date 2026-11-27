@@ -214,39 +214,148 @@ function Install-GamerPowerPlan {
     } catch { $global:LASTEXITCODE = 0 }
 }
 
-function Install-GamerNetFx3 {
+function Test-NetFx3Enabled {
     try {
-        $feat = Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction SilentlyContinue
-        if ($feat -and $feat.State -eq 'Enabled') { $global:LASTEXITCODE = -1978335189; return }
-        Write-Host "##INFO Ativando recurso NetFx3 via DISM (limite 300s)..."
-        $code = Invoke-ProcessWithTimeout -FilePath "dism.exe" -ArgumentList "/Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet" -TimeoutSeconds 300
-        if ($code -eq 0 -or $code -eq 3010) { $global:LASTEXITCODE = 0; return }
-        Write-Host "##INFO Tentando metodo alternativo via PowerShell..."
-        Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
-        $global:LASTEXITCODE = 0
-    } catch { $global:LASTEXITCODE = 0 }
+        $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5' -ErrorAction Stop
+        if ($v.Install -eq 1) { return $true }
+    } catch {}
+    try {
+        $f = Get-WindowsOptionalFeature -Online -FeatureName NetFx3 -ErrorAction Stop
+        if ($f.State -eq 'Enabled') { return $true }
+    } catch {}
+    return $false
+}
+
+function Install-GamerNetFx3 {
+    # .NET Framework 3.5 e um recurso do Windows: sao 3 caminhos (Windows Update, midia local, contornando WSUS)
+    if (Test-NetFx3Enabled) { Write-Host "##INFO .NET Framework 3.5 ja esta ativo."; $global:LASTEXITCODE = -1978335189; return }
+    $okCodes = @(0, 3010)
+
+    foreach ($svc in @('wuauserv', 'bits')) {
+        try {
+            $sv = Get-Service -Name $svc -ErrorAction Stop
+            if ($sv.StartType -eq 'Disabled') { Set-Service -Name $svc -StartupType Manual -ErrorAction SilentlyContinue }
+            if ($sv.Status -ne 'Running') { Start-Service -Name $svc -ErrorAction SilentlyContinue }
+        } catch {}
+    }
+
+    Write-Host "##INFO Tentativa 1: ativando .NET 3.5 via DISM / Windows Update (limite 420s)..."
+    $code = Invoke-ProcessWithTimeout -FilePath "dism.exe" -ArgumentList "/Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet" -TimeoutSeconds 420
+    if (($okCodes -contains $code) -or (Test-NetFx3Enabled)) { $global:LASTEXITCODE = 0; return }
+
+    Write-Host "##INFO Tentativa 2: procurando midia do Windows (pasta sources\sxs) nas unidades..."
+    $sxsList = @()
+    foreach ($d in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        $cand = Join-Path $d.Root 'sources\sxs'
+        if (Test-Path -LiteralPath $cand) { $sxsList += $cand }
+    }
+    foreach ($sxs in $sxsList) {
+        Write-Host "##INFO Usando origem local: $sxs"
+        $code = Invoke-ProcessWithTimeout -FilePath "dism.exe" -ArgumentList "/Online /Enable-Feature /FeatureName:NetFx3 /All /LimitAccess /Source:`"$sxs`" /NoRestart /Quiet" -TimeoutSeconds 300
+        if (($okCodes -contains $code) -or (Test-NetFx3Enabled)) { $global:LASTEXITCODE = 0; return }
+    }
+
+    $auKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
+    $oldWu = $null
+    try { if (Test-Path $auKey) { $oldWu = (Get-ItemProperty -Path $auKey -Name UseWUServer -ErrorAction SilentlyContinue).UseWUServer } } catch {}
+    if ($null -ne $oldWu) {
+        Write-Host "##INFO Tentativa 3: WSUS detectado. Liberando o Windows Update temporariamente..."
+        try {
+            Set-ItemProperty -Path $auKey -Name UseWUServer -Value 0 -ErrorAction Stop
+            Restart-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+            $code = Invoke-ProcessWithTimeout -FilePath "dism.exe" -ArgumentList "/Online /Enable-Feature /FeatureName:NetFx3 /All /NoRestart /Quiet" -TimeoutSeconds 420
+            if (($okCodes -contains $code) -or (Test-NetFx3Enabled)) { $global:LASTEXITCODE = 0; return }
+        } finally {
+            try { Set-ItemProperty -Path $auKey -Name UseWUServer -Value $oldWu -ErrorAction SilentlyContinue; Restart-Service -Name wuauserv -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+
+    Write-Host "##INFO Nao foi possivel ativar o .NET 3.5. Dica: monte a ISO do Windows (ou plugue o pendrive de instalacao) e rode o Kit Gamer de novo."
+    $global:LASTEXITCODE = 1
+}
+
+function Test-DotNetDesktop8Installed {
+    try {
+        $dir = Join-Path $env:ProgramFiles 'dotnet\shared\Microsoft.WindowsDesktop.App'
+        if ((Test-Path -LiteralPath $dir) -and (Get-ChildItem -LiteralPath $dir -Directory -Filter '8.*' -ErrorAction SilentlyContinue)) { return $true }
+    } catch {}
+    return $false
+}
+
+function Test-InstallerSignature {
+    param([string]$Path)
+    try {
+        $sig = Get-AuthenticodeSignature -FilePath $Path -ErrorAction Stop
+        if ($sig.Status -eq 'NotSigned' -or $sig.Status -eq 'HashMismatch') { return $false }
+    } catch {}
+    return $true
+}
+
+function Get-DotNetDesktopRuntimeUrls {
+    param([string]$Channel = '8.0')
+    $found = @()
+    $metaUrls = @(
+        "https://builds.dotnet.microsoft.com/dotnet/release-metadata/$Channel/releases.json",
+        "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/$Channel/releases.json",
+        "https://dotnetcli.azureedge.net/dotnet/release-metadata/$Channel/releases.json"
+    )
+    foreach ($m in $metaUrls) {
+        try {
+            $json = Invoke-RestMethod -Uri $m -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            if ($json -is [string]) { $json = $json | ConvertFrom-Json }
+            foreach ($rel in ($json.releases | Select-Object -First 4)) {
+                $f = $rel.windowsdesktop.files | Where-Object { $_.rid -eq 'win-x64' -and $_.name -like '*.exe' } | Select-Object -First 1
+                if ($f -and $f.url) { $found += $f.url }
+            }
+            if ($found.Count -gt 0) { break }
+        } catch {}
+    }
+    return $found
 }
 
 function Install-GamerDotNet8 {
+    if (Test-DotNetDesktop8Installed) { Write-Host "##INFO .NET Desktop Runtime 8 ja esta instalado."; $global:LASTEXITCODE = -1978335189; return }
+    $okCodes = @(0, 3010, 1641, 1638)
     Ensure-WinGetInstalled
-    Write-Host "##INFO Tentativa 1: Instalando .NET Desktop Runtime 8 via WinGet..."
-    $code = Invoke-WingetSafe -Id "Microsoft.DotNet.DesktopRuntime.8" -TimeoutSeconds 180
-    if ($code -eq 0 -or $code -eq -1978335189) { $global:LASTEXITCODE = $code; return }
 
-    Write-Host "##INFO Tentativa 2: Baixando instalador direto oficial da Microsoft..."
-    $urls = @(
-        "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe",
-        "https://download.visualstudio.microsoft.com/download/pr/9a622a4b-9706-47b2-a43c-660c6e8cf3a7/1779e3774883f360ecb3f7f02d04a621/windowsdesktop-runtime-8.0.10-win-x64.exe"
-    )
-    foreach ($u in $urls) {
+    Write-Host "##INFO Tentativa 1: .NET Desktop Runtime 8 via WinGet..."
+    $code = Invoke-WingetSafe -Id "Microsoft.DotNet.DesktopRuntime.8" -TimeoutSeconds 240
+    if ($code -eq 0 -or $code -eq -1978335189 -or (Test-DotNetDesktop8Installed)) { $global:LASTEXITCODE = 0; return }
+
+    $wg = Get-WingetExecutable
+    if ($wg) {
+        Write-Host "##INFO Atualizando fontes do WinGet e tentando de novo..."
+        $null = Invoke-ProcessWithTimeout -FilePath $wg -ArgumentList "source update" -TimeoutSeconds 60
+        $code = Invoke-WingetSafe -Id "Microsoft.DotNet.DesktopRuntime.8" -TimeoutSeconds 240
+        if ($code -eq 0 -or $code -eq -1978335189 -or (Test-DotNetDesktop8Installed)) { $global:LASTEXITCODE = 0; return }
+    }
+
+    Write-Host "##INFO Tentativa 2: link oficial permanente da Microsoft (aka.ms)..."
+    $urls = @("https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe")
+    $dynamicLoaded = $false
+    $i = 0
+    while ($i -lt $urls.Count) {
+        $u = $urls[$i]; $i++
         $p = Join-Path $env:TEMP ("dotnet8_" + [guid]::NewGuid().ToString('N') + ".exe")
         try {
-            if (Download-FileSafe -Uri $u -OutFile $p -TimeoutSec 120) {
-                $exit = Invoke-ProcessWithTimeout -FilePath $p -ArgumentList "/install /quiet /norestart" -TimeoutSeconds 180
-                if ($exit -eq 0 -or $exit -eq 3010 -or $exit -eq 1638) { $global:LASTEXITCODE = 0; return }
+            if (Download-FileSafe -Uri $u -OutFile $p -TimeoutSec 240 -MinBytes 30000000) {
+                if (-not (Test-InstallerSignature -Path $p)) {
+                    Write-Host "##INFO Assinatura invalida no arquivo baixado. Ignorando este link."
+                } else {
+                    Write-Host "##INFO Instalando .NET Desktop Runtime 8..."
+                    $exit = Invoke-ProcessWithTimeout -FilePath $p -ArgumentList "/install /quiet /norestart" -TimeoutSeconds 300
+                    if (($okCodes -contains $exit) -or (Test-DotNetDesktop8Installed)) { $global:LASTEXITCODE = 0; return }
+                }
             }
         } finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+
+        if ($i -ge $urls.Count -and -not $dynamicLoaded) {
+            $dynamicLoaded = $true
+            Write-Host "##INFO Tentativa 3: buscando a versao mais recente no catalogo oficial do .NET..."
+            $urls += @(Get-DotNetDesktopRuntimeUrls -Channel '8.0')
+        }
     }
+    Write-Host "##INFO Nao foi possivel instalar o .NET Desktop Runtime 8 (verifique a internet e tente de novo)."
     $global:LASTEXITCODE = 1
 }
 
@@ -1210,14 +1319,14 @@ if ($ModoExecucao -eq 'GUI') {
     $customTitleBar.Controls.Add($btnMinimize)
 
     $customToolTip = New-Object System.Windows.Forms.Panel
-    $customToolTip.Size = New-Object System.Drawing.Size(340, 125)
+    $customToolTip.Size = New-Object System.Drawing.Size(340, 145)
     $customToolTip.BackColor = [System.Drawing.Color]::FromArgb(35, 39, 46)
     $customToolTip.Visible = $false
     $customToolTip.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $toolTipLabel = New-Object System.Windows.Forms.Label
     $toolTipLabel.Location = New-Object System.Drawing.Point(8, 8)
-    $toolTipLabel.Size = New-Object System.Drawing.Size(322, 108)
+    $toolTipLabel.Size = New-Object System.Drawing.Size(322, 128)
     $toolTipLabel.ForeColor = [System.Drawing.Color]::FromArgb(240, 244, 250)
     $toolTipLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
     $customToolTip.Controls.Add($toolTipLabel)
@@ -1325,13 +1434,14 @@ if ($ModoExecucao -eq 'GUI') {
         "Instalar Apenas o Office" = { Start-Task "Office e atalhos" (Lote @(Passo 1 1 "Office" "Install-OfficeDeployment")) }
         "Kit Gamer" = {
             Start-Task "Kit Gamer" (Lote @(
-                (Passo 1 6 "Desempenho Maximo" "Install-GamerPowerPlan"),
-                (Passo 2 6 ".NET Framework 3.5" "Install-GamerNetFx3"),
-                (Passo 3 6 ".NET Desktop Runtime 8" "Install-GamerDotNet8"),
-                (Passo 4 6 "Visual C++ Redistributable" "Install-GamerVCRedist"),
-                (Passo 5 6 "DirectX Runtimes" "Install-GamerDirectX"),
-                (Passo 6 6 "Aplicativo Oficial da GPU" "Install-GamerGPUApp")
-            )) -total 6
+                (Passo 1 7 "Desempenho Maximo" "Install-GamerPowerPlan"),
+                (Passo 2 7 "MSI Afterburner" (W "Guru3D.Afterburner")),
+                (Passo 3 7 ".NET Desktop Runtime 8" "Install-GamerDotNet8"),
+                (Passo 4 7 "Visual C++ Redistributable" "Install-GamerVCRedist"),
+                (Passo 5 7 "DirectX Runtimes" "Install-GamerDirectX"),
+                (Passo 6 7 "Aplicativo Oficial da GPU" "Install-GamerGPUApp"),
+                (Passo 7 7 ".NET Framework 3.5" "Install-GamerNetFx3")
+            )) -total 7
         }
         "TUDO (Sem MSI e sem Office)" = {
             Start-Task "TUDO Sem MSI e sem Office" (Lote @(
@@ -1362,7 +1472,7 @@ if ($ModoExecucao -eq 'GUI') {
     }
 
     $packageTooltips = @{
-        "Kit Gamer"                     = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. .NET Framework 3.5`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO/MS)`n5. DirectX Runtimes (WinGet/Web/Offline)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)";
+        "Kit Gamer"                     = "Otimização e Runtimes para Jogos:`n1. Desempenho Máximo de Energia`n2. MSI Afterburner`n3. .NET Desktop Runtime 8`n4. Visual C++ Redistributable (AIO/MS)`n5. DirectX Runtimes (WinGet/Web/Offline)`n6. App Oficial da GPU (NVIDIA App, AMD Adrenalin ou Intel)`n7. .NET Framework 3.5";
         "TUDO (Sem MSI e sem Office)" = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR";
         "INSTALAR TUDO (Sem MSI)"     = "Este pacote instala automaticamente:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• Microsoft Office (com atalhos)";
         "INSTALAR TUDO + Office"      = "Pacote Completo Avançado:`n• Google Chrome`n• Adobe Acrobat Reader`n• WinRAR`n• MSI Afterburner`n• Microsoft Office (com atalhos)";
@@ -2248,15 +2358,16 @@ if ($ModoExecucao -eq 'GUI') {
     }
 
     $pPac = $tabPages["Pacotes"]
-    Add-GtaActionCard -Parent $pPac -X 18 -Y 16 -W 518 -H 88 -Titulo "Kit Gamer" -Sub "Desempenho Máximo • .NET 3.5/8 • VC++ • DirectX • GPU" -IconeTipo "TabGamer" -AccentColor $cNeonCyan -Acao {
+    Add-GtaActionCard -Parent $pPac -X 18 -Y 16 -W 518 -H 88 -Titulo "Kit Gamer" -Sub "Desempenho Máximo • MSI Afterburner • .NET 8 • VC++ • DirectX • GPU • .NET 3.5" -IconeTipo "TabGamer" -AccentColor $cNeonCyan -Acao {
         Start-Task "Kit Gamer" (Lote @(
-            (Passo 1 6 "Desempenho Maximo" "Install-GamerPowerPlan"),
-            (Passo 2 6 ".NET Framework 3.5" "Install-GamerNetFx3"),
-            (Passo 3 6 ".NET Desktop Runtime 8" "Install-GamerDotNet8"),
-            (Passo 4 6 "Visual C++ Redistributable" "Install-GamerVCRedist"),
-            (Passo 5 6 "DirectX Runtimes" "Install-GamerDirectX"),
-            (Passo 6 6 "Aplicativo Oficial da GPU" "Install-GamerGPUApp")
-        )) -total 6
+            (Passo 1 7 "Desempenho Maximo" "Install-GamerPowerPlan"),
+            (Passo 2 7 "MSI Afterburner" (W "Guru3D.Afterburner")),
+            (Passo 3 7 ".NET Desktop Runtime 8" "Install-GamerDotNet8"),
+            (Passo 4 7 "Visual C++ Redistributable" "Install-GamerVCRedist"),
+            (Passo 5 7 "DirectX Runtimes" "Install-GamerDirectX"),
+            (Passo 6 7 "Aplicativo Oficial da GPU" "Install-GamerGPUApp"),
+            (Passo 7 7 ".NET Framework 3.5" "Install-GamerNetFx3")
+        )) -total 7
     }
     Add-GtaActionCard -Parent $pPac -X 556 -Y 16 -W 518 -H 88 -Titulo "TUDO (Sem MSI e sem Office)" -Sub "Google Chrome • Adobe Acrobat Reader • WinRAR" -IconeTipo "CardBundle" -AccentColor $cSunsetOrg -Acao {
         Start-Task "TUDO Sem MSI e sem Office" (Lote @(
@@ -2637,7 +2748,7 @@ if ($ModoExecucao -eq 'GUI') {
         Write-Host "   [03] Instalar WinRAR              [06] Instalar Apenas o Office" -ForegroundColor White
         Write-Host ""
         Write-Host "   PACOTES & MANUTENCAO:" -ForegroundColor Cyan
-        Write-Host "   [07] Kit Gamer (Runtimes + GPU)   [10] INSTALAR TUDO + Office" -ForegroundColor Green
+        Write-Host "   [07] Kit Gamer (MSI + Runtimes + GPU)   [10] INSTALAR TUDO + Office" -ForegroundColor Green
         Write-Host "   [08] TUDO (Sem MSI e sem Office)  [11] Atualizar Windows" -ForegroundColor White
         Write-Host "   [09] INSTALAR TUDO (Sem MSI)      [12] Atualizar Drivers" -ForegroundColor White
         Write-Host ""
@@ -2668,11 +2779,12 @@ if ($ModoExecucao -eq 'GUI') {
             '^0?7$' {
                 Invoke-TaskBatchCLI "Kit Gamer Completo" @(
                     @{ Nome = "Plano Desempenho Maximo"; Cmd = { Install-GamerPowerPlan } },
-                    @{ Nome = ".NET Framework 3.5"; Cmd = { Install-GamerNetFx3 } },
+                    @{ Nome = "MSI Afterburner"; Cmd = { Install-AppFallback -Id "Guru3D.Afterburner" } },
                     @{ Nome = ".NET Desktop Runtime 8"; Cmd = { Install-GamerDotNet8 } },
                     @{ Nome = "Visual C++ Redistributable"; Cmd = { Install-GamerVCRedist } },
                     @{ Nome = "DirectX Runtimes"; Cmd = { Install-GamerDirectX } },
-                    @{ Nome = "Aplicativo Oficial da GPU"; Cmd = { Install-GamerGPUApp } }
+                    @{ Nome = "Aplicativo Oficial da GPU"; Cmd = { Install-GamerGPUApp } },
+                    @{ Nome = ".NET Framework 3.5"; Cmd = { Install-GamerNetFx3 } }
                 )
             }
             '^0?8$' {
